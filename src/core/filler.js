@@ -52,10 +52,11 @@ export function highlight(el) {
   } catch (e) { /* 忽略 */ }
 }
 
-// 地址类下拉常常只到省或市，按从完整到最细的顺序给出可用的关键词
+// 地址类下拉的选项是省、市、区，拿完整地址去搜一个都匹配不上，
+// 所以按从大到小的顺序给关键词，整串放到最后兜底
 function addressWords(value) {
   const addr = splitAddress(value);
-  const words = [String(value || '').trim(), addr.province, addr.city, addr.district];
+  const words = [addr.province, addr.city, addr.district, String(value || '').trim()];
   const out = [];
   words.forEach((word) => {
     const w = String(word || '').trim();

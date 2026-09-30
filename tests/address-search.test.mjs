@@ -77,11 +77,65 @@ const CITY_PAGE = [
   '</form></body></html>',
 ].join('');
 
-test('只到省的下拉，整串地址也能匹配到省', async () => {
+test('只到省的下拉，整串地址也能匹配到省，并提示后面的部分要手动补', async () => {
   const { dom, window } = await createPage(CITY_PAGE);
   const report = await runFill(window, { hukou: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
   assert.equal(field(dom, 'select[name="prov"]').value, '浙江省');
-  assert.deepEqual(Array.from(report.manual), []);
+  const manual = Array.from(report.manual);
+  assert.equal(manual.length, 1);
+  assert.match(manual[0], /只到「浙江省」/);
+});
+
+test('地址下拉的搜索关键词用省名，不拿完整地址去搜', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="cell"><span>籍贯</span>',
+    '<div class="btn-group bootstrap-select">',
+    '<select name="hometown" data-live-search="true" class="selectpicker"><option value="">请选择</option></select>',
+    '</div></div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const select = dom.window.document.querySelector('select[name="hometown"]');
+  const wrap = select.closest('.bootstrap-select');
+  const toggle = dom.window.document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'dropdown-toggle';
+  wrap.appendChild(toggle);
+  const typed = [];
+  let panel = null;
+  toggle.addEventListener('click', () => {
+    if (panel) { panel.remove(); panel = null; return; }
+    panel = dom.window.document.createElement('div');
+    panel.className = 'dropdown-menu open';
+    panel.innerHTML = '<div class="bs-searchbox"><input type="text"></div><ul class="dropdown-menu inner"></ul>';
+    wrap.appendChild(panel);
+    const box = panel.querySelector('input');
+    const list = panel.querySelector('ul');
+    box.addEventListener('input', () => {
+      typed.push(box.value);
+      list.innerHTML = '';
+      // 只有搜到省名时后端才给候选，整串地址是搜不出东西的
+      if (box.value.indexOf('浙江省') === 0) {
+        const li = dom.window.document.createElement('li');
+        const a = dom.window.document.createElement('a');
+        a.textContent = '浙江省';
+        li.appendChild(a);
+        list.appendChild(li);
+        a.addEventListener('click', () => {
+          const option = dom.window.document.createElement('option');
+          option.value = '浙江省';
+          option.textContent = '浙江省';
+          select.appendChild(option);
+          select.value = '浙江省';
+        });
+      }
+    });
+  });
+  await runFill(window, { hometown: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
+  assert.ok(typed.indexOf('浙江省') >= 0, '应该拿省名去搜');
+  assert.equal(typed.indexOf('浙江省杭州市西湖区'), -1, '不应该拿完整地址去搜');
+  assert.equal(select.value, '浙江省');
 });
 
 test('下拉里确实没有能对上的选项时记进需要手动处理', async () => {

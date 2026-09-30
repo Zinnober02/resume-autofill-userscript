@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.7.1
+// @version      1.7.2
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -1123,6 +1123,7 @@
     }
     await sleep(220);
     const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
+    if (box) setVal(box, "");
     const settled = () => {
       const idx = bestOptionIndex(el2, want, false);
       if (idx >= 0) {
@@ -1146,6 +1147,7 @@
       }
     }
     if (!hit) {
+      if (box) setVal(box, "");
       if (toggle) clickNode(toggle);
       return false;
     }
@@ -1462,7 +1464,7 @@
   }
   function addressWords(value) {
     const addr = splitAddress(value);
-    const words = [String(value || "").trim(), addr.province, addr.city, addr.district];
+    const words = [addr.province, addr.city, addr.district, String(value || "").trim()];
     const out = [];
     words.forEach((word) => {
       const w = String(word || "").trim();

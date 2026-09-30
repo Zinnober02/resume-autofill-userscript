@@ -71,6 +71,8 @@ export async function fillSearchSelect(el, value) {
   }
   await sleep(220);
   const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
+  // 上一次尝试可能留下了关键词，先清掉，否则会一直过滤在旧词上
+  if (box) setVal(box, '');
   // 选项可能是点开之后才去后端取的：每等一轮都看两个地方，
   // 一是原生控件里有没有被填进选项，二是弹层里有没有出现候选项
   const settled = () => {
@@ -96,6 +98,7 @@ export async function fillSearchSelect(el, value) {
     }
   }
   if (!hit) {
+    if (box) setVal(box, '');
     if (toggle) clickNode(toggle);
     return false;
   }
