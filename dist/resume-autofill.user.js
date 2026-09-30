@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.3.0
+// @version      1.4.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -237,26 +237,29 @@
     return String(v).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
   }
   function labelText(el2) {
-    const parts = [];
     if (!el2.getAttribute) return "";
-    const al = el2.getAttribute("aria-label");
-    if (al) parts.push(al);
+    const parts = [];
+    const push = (v) => {
+      const t = String(v == null ? "" : v).trim();
+      if (t && parts.indexOf(t) < 0 && parts.length < 4) parts.push(t);
+    };
+    push(attrLabel(el2));
     const lb = el2.getAttribute("aria-labelledby");
     if (lb) {
       lb.split(/\s+/).forEach((id) => {
         const t = document.getElementById(id);
-        if (t) parts.push(visibleText(t, 80));
+        if (t) push(visibleText(t, 80));
       });
     }
     if (el2.id) {
       try {
         const lab = document.querySelector('label[for="' + cssEscape(el2.id) + '"]');
-        if (lab) parts.push(visibleText(lab, 80));
+        if (lab) push(visibleText(lab, 80));
       } catch (e) {
       }
     }
     const wrap = el2.closest && el2.closest("label");
-    if (wrap) parts.push(visibleText(wrap, 80));
+    if (wrap) push(visibleText(wrap, 80));
     if (!parts.length) {
       const likeLabel = (n) => {
         if (!n || !n.tagName) return "";
@@ -264,24 +267,62 @@
         const okTag = tag === "LABEL" || tag === "TD" || tag === "TH" || tag === "SPAN" || tag === "DIV" || tag === "P" || tag === "B" || tag === "STRONG" || tag === "EM";
         if (!okTag) return "";
         if (n.querySelector && n.querySelector("input, select, textarea")) return "";
-        return visibleText(n, 30).trim();
+        return visibleText(n, 30).trim().slice(0, 30);
       };
-      let t = likeLabel(el2.previousElementSibling);
-      if (!t && el2.parentElement) t = likeLabel(el2.parentElement.previousElementSibling);
-      if (t) parts.push(t);
+      push(meaningfulLabel(likeLabel(el2.previousElementSibling)));
+      if (!parts.length && el2.parentElement) push(meaningfulLabel(likeLabel(el2.parentElement.previousElementSibling)));
     }
-    const ti = el2.getAttribute("title");
-    if (ti) parts.push(ti);
+    push(meaningfulLabel(el2.getAttribute("title")));
+    push(meaningfulLabel(el2.getAttribute("placeholder")));
     return parts.join(" ").trim();
   }
   function attrText(el2) {
-    const keys = ["name", "id", "placeholder", "data-name", "data-field", "data-label", "autocomplete", "class"];
+    const keys = ["name", "id", "placeholder", "data-name", "data-field", "data-label", "autocomplete"];
     const parts = [];
     keys.forEach((k) => {
       const v = el2.getAttribute && el2.getAttribute(k);
       if (v && v.length < 120) parts.push(v);
     });
     return parts.join(" ");
+  }
+  var LABEL_ATTRS = ["aria-label", "msg", "data-label", "data-name", "data-title", "label"];
+  var ANCESTOR_LABEL_ATTRS = ["msg", "data-label", "data-name"];
+  function meaningfulLabel(text) {
+    const t = String(text == null ? "" : text).trim();
+    if (!t) return "";
+    const flat = norm(t);
+    if (!flat || flat.length > 24) return "";
+    if (/^(请选择|请输入|请填写|请选择或输入|请选择或填写|选择|输入|select|choose|enter|input)+$/.test(flat)) return "";
+    return t;
+  }
+  function jsonLabel(node) {
+    const raw = node.getAttribute && node.getAttribute("data");
+    if (!raw || raw.charAt(0) !== "{") return "";
+    try {
+      const obj = JSON.parse(raw);
+      return obj && obj.name ? String(obj.name) : "";
+    } catch (e) {
+      return "";
+    }
+  }
+  function attrLabel(el2) {
+    for (let i = 0; i < LABEL_ATTRS.length; i += 1) {
+      const v = meaningfulLabel(el2.getAttribute(LABEL_ATTRS[i]));
+      if (v) return v;
+    }
+    const own = meaningfulLabel(jsonLabel(el2));
+    if (own) return own;
+    let node = el2.parentElement;
+    for (let depth = 0; depth < 3 && node; depth += 1) {
+      for (let i = 0; i < ANCESTOR_LABEL_ATTRS.length; i += 1) {
+        const v = meaningfulLabel(node.getAttribute && node.getAttribute(ANCESTOR_LABEL_ATTRS[i]));
+        if (v) return v;
+      }
+      const json = meaningfulLabel(jsonLabel(node));
+      if (json) return json;
+      node = node.parentElement;
+    }
+    return "";
   }
   function rowContainer(el2) {
     let cur = el2;

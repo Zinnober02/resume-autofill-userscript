@@ -54,26 +54,30 @@ export function cssEscape(v) {
   return String(v).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 
+// 依次找字段名：属性里写的 → label 元素 → 旁边的文字 → title / placeholder
 export function labelText(el) {
-  const parts = [];
   if (!el.getAttribute) return '';
-  const al = el.getAttribute('aria-label');
-  if (al) parts.push(al);
+  const parts = [];
+  const push = (v) => {
+    const t = String(v == null ? '' : v).trim();
+    if (t && parts.indexOf(t) < 0 && parts.length < 4) parts.push(t);
+  };
+  push(attrLabel(el));
   const lb = el.getAttribute('aria-labelledby');
   if (lb) {
     lb.split(/\s+/).forEach((id) => {
       const t = document.getElementById(id);
-      if (t) parts.push(visibleText(t, 80));
+      if (t) push(visibleText(t, 80));
     });
   }
   if (el.id) {
     try {
       const lab = document.querySelector('label[for="' + cssEscape(el.id) + '"]');
-      if (lab) parts.push(visibleText(lab, 80));
+      if (lab) push(visibleText(lab, 80));
     } catch (e) { /* 忽略非法选择器 */ }
   }
   const wrap = el.closest && el.closest('label');
-  if (wrap) parts.push(visibleText(wrap, 80));
+  if (wrap) push(visibleText(wrap, 80));
   // 很多老表单不写 label for，标签就是前一个格子，这里补上
   if (!parts.length) {
     const likeLabel = (n) => {
@@ -82,25 +86,72 @@ export function labelText(el) {
       const okTag = tag === 'LABEL' || tag === 'TD' || tag === 'TH' || tag === 'SPAN' || tag === 'DIV' || tag === 'P' || tag === 'B' || tag === 'STRONG' || tag === 'EM';
       if (!okTag) return '';
       if (n.querySelector && n.querySelector('input, select, textarea')) return '';
-      return visibleText(n, 30).trim();
+      return visibleText(n, 30).trim().slice(0, 30);
     };
-    let t = likeLabel(el.previousElementSibling);
-    if (!t && el.parentElement) t = likeLabel(el.parentElement.previousElementSibling);
-    if (t) parts.push(t);
+    push(meaningfulLabel(likeLabel(el.previousElementSibling)));
+    if (!parts.length && el.parentElement) push(meaningfulLabel(likeLabel(el.parentElement.previousElementSibling)));
   }
-  const ti = el.getAttribute('title');
-  if (ti) parts.push(ti);
+  push(meaningfulLabel(el.getAttribute('title')));
+  push(meaningfulLabel(el.getAttribute('placeholder')));
   return parts.join(' ').trim();
 }
 
+// 参与字段名匹配的属性。class 里放的是样式与行为标记（dayType、requireInput、startDate 这类），
+// 拿它去匹配字段名会把「入学时间」认成到岗时间，所以不取
 export function attrText(el) {
-  const keys = ['name', 'id', 'placeholder', 'data-name', 'data-field', 'data-label', 'autocomplete', 'class'];
+  const keys = ['name', 'id', 'placeholder', 'data-name', 'data-field', 'data-label', 'autocomplete'];
   const parts = [];
   keys.forEach((k) => {
     const v = el.getAttribute && el.getAttribute(k);
     if (v && v.length < 120) parts.push(v);
   });
   return parts.join(' ');
+}
+
+// 属性值里写着的字段名。属性名只用来排优先级，换一套组件库只要改这张表
+const LABEL_ATTRS = ['aria-label', 'msg', 'data-label', 'data-name', 'data-title', 'label'];
+const ANCESTOR_LABEL_ATTRS = ['msg', 'data-label', 'data-name'];
+
+// 只留像字段名的值：去掉纯提示语与过长的文本
+function meaningfulLabel(text) {
+  const t = String(text == null ? '' : text).trim();
+  if (!t) return '';
+  const flat = norm(t);
+  if (!flat || flat.length > 24) return '';
+  if (/^(请选择|请输入|请填写|请选择或输入|请选择或填写|选择|输入|select|choose|enter|input)+$/.test(flat)) return '';
+  return t;
+}
+
+// 有的组件把字段信息塞在 data 属性里的 json 中，例如 data='{"id":41,"name":"个人照片"}'
+function jsonLabel(node) {
+  const raw = node.getAttribute && node.getAttribute('data');
+  if (!raw || raw.charAt(0) !== '{') return '';
+  try {
+    const obj = JSON.parse(raw);
+    return obj && obj.name ? String(obj.name) : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function attrLabel(el) {
+  for (let i = 0; i < LABEL_ATTRS.length; i += 1) {
+    const v = meaningfulLabel(el.getAttribute(LABEL_ATTRS[i]));
+    if (v) return v;
+  }
+  const own = meaningfulLabel(jsonLabel(el));
+  if (own) return own;
+  let node = el.parentElement;
+  for (let depth = 0; depth < 3 && node; depth += 1) {
+    for (let i = 0; i < ANCESTOR_LABEL_ATTRS.length; i += 1) {
+      const v = meaningfulLabel(node.getAttribute && node.getAttribute(ANCESTOR_LABEL_ATTRS[i]));
+      if (v) return v;
+    }
+    const json = meaningfulLabel(jsonLabel(node));
+    if (json) return json;
+    node = node.parentElement;
+  }
+  return '';
 }
 
 // 往上找最近的一块「只属于当前这一行」的区域，用来判断是本科行还是硕士行
