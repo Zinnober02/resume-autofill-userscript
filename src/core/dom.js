@@ -1,6 +1,7 @@
 // DOM 查询与标签文字提取
 import { UI_ID } from './env.js';
-import { norm, sectionType, EDU_RE, WORK_RE } from './rules.js';
+import { norm, sectionType, pickKey, matchKeys, EDU_RE, WORK_RE } from './rules.js';
+import { groupOf } from './value.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -168,16 +169,59 @@ export function rowContainer(el) {
   return best;
 }
 
-// 往上找最近的一块「教育经历 / 工作经历」区块
+const FIELD_SELECTOR = 'input, textarea, select';
+
+// 往上找最近的一栏：包含至少两个表单控件的祖先。用结构判断，
+// 不依赖容器文字长短，否则字段多、选项文字长的一栏会被判成「太大」而跳过
 export function sectionContainer(el) {
   let cur = el;
-  for (let i = 0; i < 8 && cur; i += 1) {
+  for (let i = 0; i < 10 && cur; i += 1) {
     cur = cur.parentElement;
-    if (!cur || cur.tagName === 'BODY') break;
-    const t = cur.textContent || '';
-    if (t.length <= 800 && sectionType(t)) return cur;
+    if (!cur || cur.tagName === 'BODY' || cur.tagName === 'HTML') break;
+    if (cur.querySelectorAll(FIELD_SELECTOR).length >= 2) return cur;
   }
   return null;
+}
+
+const blockTypeCache = new WeakMap();
+
+// 栏内字段投票。一个名字同时属于好几组时（「开始时间」在教育、工作、活动里都成立）弃权，
+// 只让归属唯一的字段说话
+function countVotes(scope) {
+  const votes = {};
+  const list = scope.querySelectorAll(FIELD_SELECTOR);
+  for (let i = 0; i < list.length; i += 1) {
+    const node = list[i];
+    const keys = matchKeys({ label: labelText(node), attr: attrText(node) });
+    const groups = [];
+    for (let j = 0; j < keys.length; j += 1) {
+      const group = groupOf(keys[j]);
+      if (group && groups.indexOf(group) < 0) groups.push(group);
+    }
+    if (groups.length === 1) votes[groups[0]] = (votes[groups[0]] || 0) + 1;
+  }
+  return votes;
+}
+
+function bestVote(votes, min) {
+  let best = '';
+  let bestCount = 0;
+  Object.keys(votes).forEach((group) => {
+    if (votes[group] > bestCount) { bestCount = votes[group]; best = group; }
+  });
+  return bestCount >= min ? best : '';
+}
+
+// 这一栏是教育、工作、专利还是别的。先看这一栏文字里写着的线索，
+// 拿不到时再让栏内字段投票（专利、论文那一类栏目里全是带区块限定的字段名）
+export function sectionBlockType(el) {
+  const scope = sectionContainer(el);
+  if (!scope) return '';
+  if (blockTypeCache.has(scope)) return blockTypeCache.get(scope);
+  const byVote = bestVote(countVotes(scope), 2);
+  const result = byVote || sectionType(norm(visibleText(scope, 600)));
+  blockTypeCache.set(scope, result);
+  return result;
 }
 
 // 找「整个教育经历 / 工作经历」这一大块，用来数这是第几段经历
@@ -201,8 +245,20 @@ export function sectionScope(el) {
   return best;
 }
 
+// 文字线索的兜底：容器文字里直接写着区块类型（「教育经历」这类标题）
+function textSection(el) {
+  let cur = el;
+  for (let i = 0; i < 8 && cur; i += 1) {
+    cur = cur.parentElement;
+    if (!cur || cur.tagName === 'BODY') break;
+    const t = cur.textContent || '';
+    if (t.length <= 800 && sectionType(t)) return cur;
+  }
+  return null;
+}
+
 export function fieldHint(el) {
-  const sec = sectionContainer(el);
+  const sec = sectionContainer(el) || textSection(el);
   if (!sec) return '';
   return visibleText(sec, 400) + ' ' + visibleText(rowContainer(el), 160);
 }

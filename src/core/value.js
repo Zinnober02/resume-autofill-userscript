@@ -25,6 +25,14 @@ export const AWARD_KEYS = {
 
 export const FAMILY_KEYS = { familyName: 1, familyRelation: 1, familyNote: 1, familyInCompany: 1 };
 
+export const ACTIVITY_KEYS = {
+  activityName: 1, activityRole: 1, activityStart: 1, activityEnd: 1, activityDesc: 1,
+};
+
+export const PROJECT_KEYS = {
+  projectName: 1, projectRole: 1, projectStart: 1, projectEnd: 1, projectDesc: 1,
+};
+
 // 一组字段对应资料里的哪个数组
 export const KEY_GROUPS = {
   edu: EDU_KEYS,
@@ -34,6 +42,8 @@ export const KEY_GROUPS = {
   paper: PAPER_KEYS,
   award: AWARD_KEYS,
   family: FAMILY_KEYS,
+  activity: ACTIVITY_KEYS,
+  project: PROJECT_KEYS,
 };
 
 export const GROUP_ARRAYS = {
@@ -44,6 +54,8 @@ export const GROUP_ARRAYS = {
   paper: 'papers',
   award: 'awards',
   family: 'family',
+  activity: 'activities',
+  project: 'projects',
 };
 
 export function groupOf(key) {
@@ -57,7 +69,8 @@ export function groupOf(key) {
 // 需要按日期格式填写的字段，用来识别年 / 月 / 日分开的控件组
 export const DATE_KEYS = {
   birthday: 1, eduStart: 1, eduEnd: 1, workStart: 1, workEnd: 1, availableDate: 1,
-  certDate: 1, patentDate: 1, paperDate: 1, awardDate: 1,
+  certDate: 1, patentDate: 1, paperDate: 1, awardDate: 1, activityStart: 1, activityEnd: 1,
+  projectStart: 1, projectEnd: 1,
 };
 
 // 资料里的日期可能是 2003-09-01 或 2003-09-01 09:30，统一取出各部分
@@ -173,6 +186,10 @@ export const FIELD_NAMES = {
   awardDate: '获奖时间', awardIssuer: '颁发单位',
   familyName: '家庭成员姓名', familyRelation: '家庭关系', familyNote: '家庭关系备注',
   familyInCompany: '是否在本单位工作',
+  activityName: '活动名称', activityRole: '担任职务', activityStart: '活动开始时间',
+  activityEnd: '活动结束时间', activityDesc: '活动描述',
+  projectName: '项目名称', projectRole: '项目职务', projectStart: '项目开始时间',
+  projectEnd: '项目结束时间',
   projectDesc: '项目描述', selfEvaluation: '自我评价', skills: '专业技能',
   emergencyName: '紧急联系人', emergencyRelation: '与本人关系', emergencyPhone: '紧急联系人电话',
 };

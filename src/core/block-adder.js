@@ -12,6 +12,8 @@ const SECTION_RE = {
   paper: /论文|期刊/,
   award: /奖励|奖项|荣誉/,
   family: /家庭|亲属/,
+  activity: /活动|社团/,
+  project: /项目|课题/,
 };
 
 export function targetBlockCount(profile, type) {

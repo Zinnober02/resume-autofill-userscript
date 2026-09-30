@@ -37,7 +37,6 @@ export const SEED_PROFILES = {
     otherLanguages: '',
     itSkills: '',
     hobbies: '',
-    projectDesc: '',
     selfEvaluation: '',
     skills: '',
     emergencyName: '',
@@ -50,6 +49,8 @@ export const SEED_PROFILES = {
     papers: [],
     awards: [],
     family: [],
+    activities: [],
+    projects: [],
     extra: [],
   },
 };
@@ -107,6 +108,22 @@ export const AWARD_ITEM_FORM = [
   ['awardGrade', '奖励等级', 'select', ['', '一等', '二等', '三等', '其它']],
   ['awardDate', '获奖时间', 'text', '如 2024-01-01'],
   ['awardIssuer', '颁发单位', 'text'],
+];
+
+export const ACTIVITY_ITEM_FORM = [
+  ['activityName', '活动名称', 'text'],
+  ['activityRole', '担任职务', 'text'],
+  ['activityStart', '开始时间', 'text', '如 2024-09-01'],
+  ['activityEnd', '结束时间', 'text', '如 2025-06-01'],
+  ['activityDesc', '活动描述', 'textarea'],
+];
+
+export const PROJECT_ITEM_FORM = [
+  ['projectName', '项目名称', 'text'],
+  ['projectRole', '项目职务', 'text'],
+  ['projectStart', '开始时间', 'text', '如 2026-03-01'],
+  ['projectEnd', '结束时间', 'text', '如 2026-06-01'],
+  ['projectDesc', '项目描述', 'textarea'],
 ];
 
 export const FAMILY_ITEM_FORM = [

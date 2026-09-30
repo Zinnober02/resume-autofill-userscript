@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.4.0
+// @version      1.5.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -40,12 +40,16 @@
   var PAPER_RE = /论文|期刊|学术成果|文献/;
   var AWARD_RE = /奖励|奖项|荣誉|获奖|奖学金|竞赛/;
   var FAMILY_RE = /家庭|亲属|家属/;
+  var ACTIVITY_RE = /活动|社团|社会实践/;
+  var PROJECT_RE = /项目|课题/;
   var SECTION_RES = [
     ["patent", PATENT_RE],
     ["paper", PAPER_RE],
     ["award", AWARD_RE],
     ["family", FAMILY_RE],
     ["cert", CERT_RE],
+    ["activity", ACTIVITY_RE],
+    ["project", PROJECT_RE],
     ["edu", EDU_RE],
     ["work", WORK_RE]
   ];
@@ -57,6 +61,17 @@
   }
   var norm = (s) => String(s == null ? "" : s).replace(/[\uff01-\uff5e]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 65248)).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
   var RULES = [
+    // 带区块限定的规则放在前面：这些字段名（职务、开始时间、姓名、关系）在别处有别的含义，
+    // 先让专用规则有机会命中，通用的「职位」「姓名」规则排在后面
+    { key: "activityEnd", re: /结束时间|结束日期|终止时间/, ctx: ["activity"] },
+    { key: "activityStart", re: /开始时间|开始日期|起始时间/, ctx: ["activity"] },
+    { key: "activityRole", re: /^职务$|担任职务|担任角色/, ctx: ["activity"] },
+    { key: "activityName", re: /活动名称|社团名称|社会实践名称/, ctx: ["activity"] },
+    { key: "activityDesc", re: /活动描述|活动内容|活动简介/, ctx: ["activity"] },
+    { key: "projectEnd", re: /结束时间|结束日期|终止时间/, ctx: ["project"] },
+    { key: "projectStart", re: /开始时间|开始日期|起始时间/, ctx: ["project"] },
+    { key: "projectRole", re: /项目职务|项目角色|担任角色/, ctx: ["project"] },
+    { key: "projectName", re: /项目名称|课题名称|项目标题/, ctx: ["project"] },
     { key: "idType", re: /证件类型|证件类别|身份类型|证件种类/ },
     { key: "idCard", re: /身份证|证件号码|证件号|身份号码|idcardno|idcardnumber|identityno|identitynumber|residentid/ },
     { key: "englishName", re: /英文名|英文姓名|拼音姓名|拼音名|englishname|nameinenglish|nameinpinyin|pinyin|forename/ },
@@ -64,14 +79,14 @@
     { key: "emergencyRelation", re: /与本人关系|亲属关系|紧急联系人关系|relationship/ },
     { key: "emergencyName", re: /紧急联系人|紧急情况联系人|监护人/ },
     { key: "familyInCompany", re: /是否在.{0,8}(工作|任职)|在本单位工作|是否在.{0,8}集团/, ctx: ["family"] },
+    { key: "familyNote", re: /备注|说明/, ctx: ["family"] },
     { key: "familyRelation", re: /^关系$|与本人关系|亲属关系|家庭成员关系|家庭关系/, ctx: ["family"] },
     { key: "familyName", re: /家庭成员姓名|家属姓名|亲属姓名|^姓名$/, ctx: ["family"] },
-    { key: "familyNote", re: /备注|说明/, ctx: ["family"] },
     { key: "certLevel", re: /证书等级|证书级别|资格等级/, ctx: ["cert"] },
     { key: "certDate", re: /证书.{0,4}(时间|日期)|获得时间|取得时间/, ctx: ["cert"] },
     { key: "certName", re: /证书名称|资格证书|专业资格证书|证书/, ctx: ["cert"] },
     { key: "patentType", re: /专利类型|专利种类/, ctx: ["patent"] },
-    { key: "patentStage", re: /申请阶段|受理阶段|审查阶段|公布阶段|授权阶段|当前阶段|专利阶段/, ctx: ["patent"] },
+    { key: "patentStage", re: /申请阶段|受理阶段|审查阶段|公布阶段|授权阶段|当前阶段|专利阶段|发表阶段/, ctx: ["patent"] },
     { key: "patentDate", re: /发表日期|申请日期|公开日期|授权日期/, ctx: ["patent"] },
     { key: "patentAuthorRank", re: /作者排序|作者排名|第几作者/, ctx: ["patent", "paper"] },
     { key: "patentName", re: /专利名称|专利号|专利标题|发明名称/, ctx: ["patent"] },
@@ -129,12 +144,10 @@
     { key: "department", re: /部门|department|division|businessunit/, neg: /学院|院系|系别|部门负责人/ },
     { key: "title", re: /职位|职务|岗位|jobtitle|position|^title$/, neg: /意向|期望|应聘|申请|目标|职位类别|岗位类别|职位性质/ },
     { key: "workDesc", re: /工作内容|工作描述|工作职责|职责描述|岗位职责|主要工作|工作业绩|实习内容|工作成果|工作说明|responsibilit|jobdescription|duties/ },
-    { key: "projectDesc", re: /项目描述|项目简介|项目内容|项目经历描述|项目经验描述|项目职务|项目名称|projectdescription|projectexperience/ },
+    { key: "projectDesc", re: /项目描述|项目简介|项目内容|项目职责|项目经历描述|项目经验描述|projectdescription|projectexperience/ },
     { key: "workEnd", re: /离职时间|离职日期|^离职$|离职|结束时间|结束日期|转正时间|enddate/, ctx: "work" },
     { key: "workStart", re: /入职时间|入职日期|^入职$|入职|起始时间|开始时间|开始日期|startdate/, ctx: "work" },
-    { key: "activityName", re: /活动名称|社团名称/, ctx: ["work"] },
-    { key: "activityDesc", re: /活动描述|活动内容/, ctx: ["work"] },
-    { key: "englishLevel", re: /英语水平|英语等级|英语能力|外语水平|英语四六级|四级|六级|cet/, neg: /其他外语|第二外语/ },
+    { key: "englishLevel", re: /英语水平|英语等级|英语能力|英语成绩|外语水平|英语四六级|四级|六级|cet/, neg: /其他外语|第二外语/ },
     { key: "otherLanguages", re: /其他外语|第二外语|其他语种/ },
     { key: "itSkills", re: /it技能|计算机水平|计算机等级|技能掌握程度|办公软件/ },
     { key: "hobbies", re: /爱好|兴趣特长|业余爱好/ },
@@ -146,17 +159,36 @@
     if (Array.isArray(ruleCtx)) return ruleCtx.indexOf(ctx) >= 0;
     return ruleCtx === ctx;
   }
+  function matchKeys(t) {
+    const label = norm(t.label || "");
+    const attr = norm(t.attr || "");
+    const passes = [label, attr, label + "|" + attr];
+    const out = [];
+    for (let i = 0; i < passes.length; i += 1) {
+      const src = passes[i];
+      if (!src) continue;
+      for (let j = 0; j < RULES.length; j += 1) {
+        const r = RULES[j];
+        if (!r.re.test(src)) continue;
+        if (r.neg && r.neg.test(src)) continue;
+        if (out.indexOf(r.key) < 0) out.push(r.key);
+      }
+      if (out.length) break;
+    }
+    return out;
+  }
   function pickKey(t) {
     const label = norm(t.label || "");
     const attr = norm(t.attr || "");
-    const ctx = sectionType(norm(t.hint || ""));
+    const ctx = t.block || sectionType(norm(t.hint || ""));
+    const loose = !!t.ignoreCtx;
     const passes = [label, attr, label + "|" + attr];
     for (let i = 0; i < passes.length; i += 1) {
       const src = passes[i];
       if (!src) continue;
       for (let j = 0; j < RULES.length; j += 1) {
         const r = RULES[j];
-        if (r.ctx && !ctxMatches(r.ctx, ctx)) continue;
+        if (!loose && r.ctx && !ctxMatches(r.ctx, ctx)) continue;
         if (!r.re.test(src)) continue;
         if (r.neg && r.neg.test(src)) continue;
         return r.key;
@@ -166,7 +198,7 @@
       const h = norm(t.hint);
       for (let j = 0; j < RULES.length; j += 1) {
         const r = RULES[j];
-        if (r.ctx && !ctxMatches(r.ctx, ctx)) continue;
+        if (!loose && r.ctx && !ctxMatches(r.ctx, ctx)) continue;
         if (!r.re.test(h)) continue;
         if (r.neg && r.neg.test(h)) continue;
         return r.key;
@@ -174,6 +206,279 @@
     }
     return null;
   }
+
+  // src/core/value.js
+  var EDU_KEYS = {
+    school: 1,
+    college: 1,
+    major: 1,
+    degree: 1,
+    degreeLevel: 1,
+    eduStart: 1,
+    eduEnd: 1,
+    gpa: 1,
+    rank: 1
+  };
+  var WORK_KEYS = {
+    company: 1,
+    department: 1,
+    title: 1,
+    workCity: 1,
+    workStart: 1,
+    workEnd: 1,
+    workDesc: 1
+  };
+  var CERT_KEYS = { certName: 1, certLevel: 1, certDate: 1 };
+  var PATENT_KEYS = { patentName: 1, patentType: 1, patentDate: 1, patentStage: 1, patentAuthorRank: 1 };
+  var PAPER_KEYS = {
+    paperName: 1,
+    journalName: 1,
+    journalLevel: 1,
+    paperStatus: 1,
+    paperDate: 1,
+    paperAuthorRank: 1,
+    impactFactor: 1
+  };
+  var AWARD_KEYS = {
+    awardName: 1,
+    awardCategory: 1,
+    awardLevel: 1,
+    awardGrade: 1,
+    awardDate: 1,
+    awardIssuer: 1
+  };
+  var FAMILY_KEYS = { familyName: 1, familyRelation: 1, familyNote: 1, familyInCompany: 1 };
+  var ACTIVITY_KEYS = {
+    activityName: 1,
+    activityRole: 1,
+    activityStart: 1,
+    activityEnd: 1,
+    activityDesc: 1
+  };
+  var PROJECT_KEYS = {
+    projectName: 1,
+    projectRole: 1,
+    projectStart: 1,
+    projectEnd: 1,
+    projectDesc: 1
+  };
+  var KEY_GROUPS = {
+    edu: EDU_KEYS,
+    work: WORK_KEYS,
+    cert: CERT_KEYS,
+    patent: PATENT_KEYS,
+    paper: PAPER_KEYS,
+    award: AWARD_KEYS,
+    family: FAMILY_KEYS,
+    activity: ACTIVITY_KEYS,
+    project: PROJECT_KEYS
+  };
+  var GROUP_ARRAYS = {
+    edu: "educations",
+    work: "works",
+    cert: "certificates",
+    patent: "patents",
+    paper: "papers",
+    award: "awards",
+    family: "family",
+    activity: "activities",
+    project: "projects"
+  };
+  function groupOf(key) {
+    const groups = Object.keys(KEY_GROUPS);
+    for (let i = 0; i < groups.length; i += 1) {
+      if (KEY_GROUPS[groups[i]][key]) return groups[i];
+    }
+    return "";
+  }
+  var DATE_KEYS = {
+    birthday: 1,
+    eduStart: 1,
+    eduEnd: 1,
+    workStart: 1,
+    workEnd: 1,
+    availableDate: 1,
+    certDate: 1,
+    patentDate: 1,
+    paperDate: 1,
+    awardDate: 1,
+    activityStart: 1,
+    activityEnd: 1,
+    projectStart: 1,
+    projectEnd: 1
+  };
+  function splitDateTime(value) {
+    const s = String(value == null ? "" : value).trim();
+    const m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?(?:[T ](\d{1,2}):(\d{2}))?$/);
+    if (!m) return null;
+    const hour = m[4] == null ? "" : ("0" + m[4]).slice(-2) + ":" + m[5];
+    return {
+      year: m[1],
+      month: ("0" + m[2]).slice(-2),
+      day: m[3] == null ? "01" : ("0" + m[3]).slice(-2),
+      hasDay: m[3] != null,
+      time: hour
+    };
+  }
+  function valueForField(key, profile, index) {
+    if (key === "age") {
+      const by = parseInt(String(profile.birthday || "").slice(0, 4), 10);
+      if (!by) return "";
+      const bm = parseInt(String(profile.birthday || "").slice(5, 7), 10);
+      const now = /* @__PURE__ */ new Date();
+      let age = now.getFullYear() - by;
+      if (bm && now.getMonth() + 1 < bm) age -= 1;
+      return String(age);
+    }
+    const group = groupOf(key);
+    if (group) {
+      const item = (profile[GROUP_ARRAYS[group]] || [])[index - 1];
+      return item && item[key] != null ? item[key] : "";
+    }
+    return profile[key] == null ? "" : profile[key];
+  }
+  function matchExtra(profile, label, attr, rowText) {
+    const list = profile && profile.extra;
+    if (!list || !list.length) return null;
+    const hay = norm(label + " " + attr + " " + rowText);
+    if (!hay) return null;
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i];
+      if (!item || !item.match || !item.value) continue;
+      const m = norm(item.match);
+      if (m && hay.indexOf(m) >= 0) return "extra:" + item.value;
+    }
+    return null;
+  }
+  function monthGranularity(el2, label) {
+    const ph = String(el2.getAttribute("placeholder") || "");
+    const flat = ph.toLowerCase();
+    const dayInPlaceholder = /(^|[^a-z])d{1,2}([^a-z]|$)/.test(flat) || /[日号]/.test(ph);
+    const monthInPlaceholder = /(^|[^a-z])m{1,2}([^a-z]|$)/.test(flat) || /月/.test(ph);
+    if (dayInPlaceholder) return false;
+    if (monthInPlaceholder) return true;
+    if (Number(el2.getAttribute("maxlength")) === 7) return true;
+    const name = String(label || "");
+    if (/[日号]/.test(name)) return false;
+    if (/月/.test(name)) return true;
+    return false;
+  }
+  function formatValue(el2, value, label) {
+    const date = splitDateTime(value);
+    if (!date) return String(value);
+    const type = (el2.type || "").toLowerCase();
+    const full = date.year + "-" + date.month + "-" + date.day;
+    if (type === "month") return date.year + "-" + date.month;
+    if (type === "date") return full;
+    if (type === "datetime-local") return full + "T" + (date.time || "00:00");
+    if (type === "time") return date.time;
+    const ph = el2.getAttribute("placeholder") || "";
+    if (monthGranularity(el2, label)) {
+      if (ph.indexOf("/") >= 0) return date.year + "/" + date.month;
+      if (/年/.test(ph)) return date.year + "年" + date.month + "月";
+      if (/[.．]/.test(ph)) return date.year + "." + date.month;
+      if (ph !== "") return date.year + "-" + date.month;
+      return date.year + "-" + date.month;
+    }
+    if (/年/.test(ph) && /[日号]/.test(ph)) return date.year + "年" + date.month + "月" + date.day + "日";
+    if (ph.indexOf("/") >= 0) return full.replace(/-/g, "/");
+    if (/年.*月/.test(ph)) return date.year + "年" + date.month + "月";
+    return String(value);
+  }
+  var FIELD_NAMES = {
+    name: "姓名",
+    englishName: "英文名",
+    gender: "性别",
+    birthday: "出生日期",
+    age: "年龄",
+    nation: "民族",
+    politicalStatus: "政治面貌",
+    maritalStatus: "婚姻状况",
+    idType: "证件类型",
+    idCard: "身份证号",
+    phone: "手机号",
+    email: "邮箱",
+    wechat: "微信",
+    hometown: "籍贯",
+    hukou: "户口所在地",
+    hukouType: "户口类型",
+    currentCity: "现居城市",
+    address: "地址",
+    zipcode: "邮编",
+    health: "健康状况",
+    gaokaoOrigin: "高考生源地",
+    isFreshGraduate: "是否应届毕业生",
+    applyPosition: "意向岗位",
+    expectCity: "意向城市",
+    expectSalary: "期望薪资",
+    availableDate: "到岗时间",
+    jobType: "期望工作性质",
+    source: "获知渠道",
+    website: "个人网站",
+    github: "GitHub",
+    referralCode: "内推码",
+    adjust: "是否服从调剂",
+    englishLevel: "英语水平",
+    otherLanguages: "其他外语水平",
+    itSkills: "IT 技能掌握程度",
+    hobbies: "个人爱好",
+    school: "学校",
+    college: "学院",
+    major: "专业",
+    degree: "学历",
+    degreeLevel: "学位",
+    eduStart: "入学时间",
+    eduEnd: "毕业时间",
+    gpa: "GPA",
+    rank: "排名",
+    company: "公司",
+    department: "部门",
+    title: "职位",
+    workStart: "开始时间",
+    workEnd: "结束时间",
+    workCity: "工作城市",
+    workDesc: "工作描述",
+    certName: "证书名称",
+    certLevel: "证书等级",
+    certDate: "证书获得时间",
+    patentName: "专利名称",
+    patentType: "专利类型",
+    patentDate: "专利发表日期",
+    patentStage: "专利阶段",
+    patentAuthorRank: "专利作者排序",
+    paperName: "论文名称",
+    journalName: "期刊或会议名称",
+    journalLevel: "期刊或会议水平",
+    paperStatus: "论文发表状态",
+    paperDate: "论文接收或发表日期",
+    paperAuthorRank: "论文作者排序",
+    impactFactor: "影响因子",
+    awardName: "奖励名称",
+    awardCategory: "奖项类别",
+    awardLevel: "奖励级别",
+    awardGrade: "奖励等级",
+    awardDate: "获奖时间",
+    awardIssuer: "颁发单位",
+    familyName: "家庭成员姓名",
+    familyRelation: "家庭关系",
+    familyNote: "家庭关系备注",
+    familyInCompany: "是否在本单位工作",
+    activityName: "活动名称",
+    activityRole: "担任职务",
+    activityStart: "活动开始时间",
+    activityEnd: "活动结束时间",
+    activityDesc: "活动描述",
+    projectName: "项目名称",
+    projectRole: "项目职务",
+    projectStart: "项目开始时间",
+    projectEnd: "项目结束时间",
+    projectDesc: "项目描述",
+    selfEvaluation: "自我评价",
+    skills: "专业技能",
+    emergencyName: "紧急联系人",
+    emergencyRelation: "与本人关系",
+    emergencyPhone: "紧急联系人电话"
+  };
 
   // src/core/dom.js
   var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -336,7 +641,53 @@
     }
     return best;
   }
+  var FIELD_SELECTOR = "input, textarea, select";
   function sectionContainer(el2) {
+    let cur = el2;
+    for (let i = 0; i < 10 && cur; i += 1) {
+      cur = cur.parentElement;
+      if (!cur || cur.tagName === "BODY" || cur.tagName === "HTML") break;
+      if (cur.querySelectorAll(FIELD_SELECTOR).length >= 2) return cur;
+    }
+    return null;
+  }
+  var blockTypeCache = /* @__PURE__ */ new WeakMap();
+  function countVotes(scope) {
+    const votes = {};
+    const list = scope.querySelectorAll(FIELD_SELECTOR);
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      const keys = matchKeys({ label: labelText(node), attr: attrText(node) });
+      const groups = [];
+      for (let j = 0; j < keys.length; j += 1) {
+        const group = groupOf(keys[j]);
+        if (group && groups.indexOf(group) < 0) groups.push(group);
+      }
+      if (groups.length === 1) votes[groups[0]] = (votes[groups[0]] || 0) + 1;
+    }
+    return votes;
+  }
+  function bestVote(votes, min) {
+    let best = "";
+    let bestCount = 0;
+    Object.keys(votes).forEach((group) => {
+      if (votes[group] > bestCount) {
+        bestCount = votes[group];
+        best = group;
+      }
+    });
+    return bestCount >= min ? best : "";
+  }
+  function sectionBlockType(el2) {
+    const scope = sectionContainer(el2);
+    if (!scope) return "";
+    if (blockTypeCache.has(scope)) return blockTypeCache.get(scope);
+    const byVote = bestVote(countVotes(scope), 2);
+    const result = byVote || sectionType(norm(visibleText(scope, 600)));
+    blockTypeCache.set(scope, result);
+    return result;
+  }
+  function textSection(el2) {
     let cur = el2;
     for (let i = 0; i < 8 && cur; i += 1) {
       cur = cur.parentElement;
@@ -347,7 +698,7 @@
     return null;
   }
   function fieldHint(el2) {
-    const sec = sectionContainer(el2);
+    const sec = sectionContainer(el2) || textSection(el2);
     if (!sec) return "";
     return visibleText(sec, 400) + " " + visibleText(rowContainer(el2), 160);
   }
@@ -397,7 +748,6 @@
       otherLanguages: "",
       itSkills: "",
       hobbies: "",
-      projectDesc: "",
       selfEvaluation: "",
       skills: "",
       emergencyName: "",
@@ -410,6 +760,8 @@
       papers: [],
       awards: [],
       family: [],
+      activities: [],
+      projects: [],
       extra: []
     }
   };
@@ -461,6 +813,20 @@
     ["awardGrade", "奖励等级", "select", ["", "一等", "二等", "三等", "其它"]],
     ["awardDate", "获奖时间", "text", "如 2024-01-01"],
     ["awardIssuer", "颁发单位", "text"]
+  ];
+  var ACTIVITY_ITEM_FORM = [
+    ["activityName", "活动名称", "text"],
+    ["activityRole", "担任职务", "text"],
+    ["activityStart", "开始时间", "text", "如 2024-09-01"],
+    ["activityEnd", "结束时间", "text", "如 2025-06-01"],
+    ["activityDesc", "活动描述", "textarea"]
+  ];
+  var PROJECT_ITEM_FORM = [
+    ["projectName", "项目名称", "text"],
+    ["projectRole", "项目职务", "text"],
+    ["projectStart", "开始时间", "text", "如 2026-03-01"],
+    ["projectEnd", "结束时间", "text", "如 2026-06-01"],
+    ["projectDesc", "项目描述", "textarea"]
   ];
   var FAMILY_ITEM_FORM = [
     ["familyName", "姓名", "text"],
@@ -583,248 +949,6 @@
       return false;
     }
   }
-
-  // src/core/value.js
-  var EDU_KEYS = {
-    school: 1,
-    college: 1,
-    major: 1,
-    degree: 1,
-    degreeLevel: 1,
-    eduStart: 1,
-    eduEnd: 1,
-    gpa: 1,
-    rank: 1
-  };
-  var WORK_KEYS = {
-    company: 1,
-    department: 1,
-    title: 1,
-    workCity: 1,
-    workStart: 1,
-    workEnd: 1,
-    workDesc: 1
-  };
-  var CERT_KEYS = { certName: 1, certLevel: 1, certDate: 1 };
-  var PATENT_KEYS = { patentName: 1, patentType: 1, patentDate: 1, patentStage: 1, patentAuthorRank: 1 };
-  var PAPER_KEYS = {
-    paperName: 1,
-    journalName: 1,
-    journalLevel: 1,
-    paperStatus: 1,
-    paperDate: 1,
-    paperAuthorRank: 1,
-    impactFactor: 1
-  };
-  var AWARD_KEYS = {
-    awardName: 1,
-    awardCategory: 1,
-    awardLevel: 1,
-    awardGrade: 1,
-    awardDate: 1,
-    awardIssuer: 1
-  };
-  var FAMILY_KEYS = { familyName: 1, familyRelation: 1, familyNote: 1, familyInCompany: 1 };
-  var KEY_GROUPS = {
-    edu: EDU_KEYS,
-    work: WORK_KEYS,
-    cert: CERT_KEYS,
-    patent: PATENT_KEYS,
-    paper: PAPER_KEYS,
-    award: AWARD_KEYS,
-    family: FAMILY_KEYS
-  };
-  var GROUP_ARRAYS = {
-    edu: "educations",
-    work: "works",
-    cert: "certificates",
-    patent: "patents",
-    paper: "papers",
-    award: "awards",
-    family: "family"
-  };
-  function groupOf(key) {
-    const groups = Object.keys(KEY_GROUPS);
-    for (let i = 0; i < groups.length; i += 1) {
-      if (KEY_GROUPS[groups[i]][key]) return groups[i];
-    }
-    return "";
-  }
-  var DATE_KEYS = {
-    birthday: 1,
-    eduStart: 1,
-    eduEnd: 1,
-    workStart: 1,
-    workEnd: 1,
-    availableDate: 1,
-    certDate: 1,
-    patentDate: 1,
-    paperDate: 1,
-    awardDate: 1
-  };
-  function splitDateTime(value) {
-    const s = String(value == null ? "" : value).trim();
-    const m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?(?:[T ](\d{1,2}):(\d{2}))?$/);
-    if (!m) return null;
-    const hour = m[4] == null ? "" : ("0" + m[4]).slice(-2) + ":" + m[5];
-    return {
-      year: m[1],
-      month: ("0" + m[2]).slice(-2),
-      day: m[3] == null ? "01" : ("0" + m[3]).slice(-2),
-      hasDay: m[3] != null,
-      time: hour
-    };
-  }
-  function valueForField(key, profile, index) {
-    if (key === "age") {
-      const by = parseInt(String(profile.birthday || "").slice(0, 4), 10);
-      if (!by) return "";
-      const bm = parseInt(String(profile.birthday || "").slice(5, 7), 10);
-      const now = /* @__PURE__ */ new Date();
-      let age = now.getFullYear() - by;
-      if (bm && now.getMonth() + 1 < bm) age -= 1;
-      return String(age);
-    }
-    const group = groupOf(key);
-    if (group) {
-      const item = (profile[GROUP_ARRAYS[group]] || [])[index - 1];
-      return item && item[key] != null ? item[key] : "";
-    }
-    return profile[key] == null ? "" : profile[key];
-  }
-  function matchExtra(profile, label, attr, rowText) {
-    const list = profile && profile.extra;
-    if (!list || !list.length) return null;
-    const hay = norm(label + " " + attr + " " + rowText);
-    if (!hay) return null;
-    for (let i = 0; i < list.length; i += 1) {
-      const item = list[i];
-      if (!item || !item.match || !item.value) continue;
-      const m = norm(item.match);
-      if (m && hay.indexOf(m) >= 0) return "extra:" + item.value;
-    }
-    return null;
-  }
-  function monthGranularity(el2, label) {
-    const ph = String(el2.getAttribute("placeholder") || "");
-    const flat = ph.toLowerCase();
-    const dayInPlaceholder = /(^|[^a-z])d{1,2}([^a-z]|$)/.test(flat) || /[日号]/.test(ph);
-    const monthInPlaceholder = /(^|[^a-z])m{1,2}([^a-z]|$)/.test(flat) || /月/.test(ph);
-    if (dayInPlaceholder) return false;
-    if (monthInPlaceholder) return true;
-    if (Number(el2.getAttribute("maxlength")) === 7) return true;
-    const name = String(label || "");
-    if (/[日号]/.test(name)) return false;
-    if (/月/.test(name)) return true;
-    return false;
-  }
-  function formatValue(el2, value, label) {
-    const date = splitDateTime(value);
-    if (!date) return String(value);
-    const type = (el2.type || "").toLowerCase();
-    const full = date.year + "-" + date.month + "-" + date.day;
-    if (type === "month") return date.year + "-" + date.month;
-    if (type === "date") return full;
-    if (type === "datetime-local") return full + "T" + (date.time || "00:00");
-    if (type === "time") return date.time;
-    const ph = el2.getAttribute("placeholder") || "";
-    if (monthGranularity(el2, label)) {
-      if (ph.indexOf("/") >= 0) return date.year + "/" + date.month;
-      if (/年/.test(ph)) return date.year + "年" + date.month + "月";
-      if (/[.．]/.test(ph)) return date.year + "." + date.month;
-      if (ph !== "") return date.year + "-" + date.month;
-      return date.year + "-" + date.month;
-    }
-    if (/年/.test(ph) && /[日号]/.test(ph)) return date.year + "年" + date.month + "月" + date.day + "日";
-    if (ph.indexOf("/") >= 0) return full.replace(/-/g, "/");
-    if (/年.*月/.test(ph)) return date.year + "年" + date.month + "月";
-    return String(value);
-  }
-  var FIELD_NAMES = {
-    name: "姓名",
-    englishName: "英文名",
-    gender: "性别",
-    birthday: "出生日期",
-    age: "年龄",
-    nation: "民族",
-    politicalStatus: "政治面貌",
-    maritalStatus: "婚姻状况",
-    idType: "证件类型",
-    idCard: "身份证号",
-    phone: "手机号",
-    email: "邮箱",
-    wechat: "微信",
-    hometown: "籍贯",
-    hukou: "户口所在地",
-    hukouType: "户口类型",
-    currentCity: "现居城市",
-    address: "地址",
-    zipcode: "邮编",
-    health: "健康状况",
-    gaokaoOrigin: "高考生源地",
-    isFreshGraduate: "是否应届毕业生",
-    applyPosition: "意向岗位",
-    expectCity: "意向城市",
-    expectSalary: "期望薪资",
-    availableDate: "到岗时间",
-    jobType: "期望工作性质",
-    source: "获知渠道",
-    website: "个人网站",
-    github: "GitHub",
-    referralCode: "内推码",
-    adjust: "是否服从调剂",
-    englishLevel: "英语水平",
-    otherLanguages: "其他外语水平",
-    itSkills: "IT 技能掌握程度",
-    hobbies: "个人爱好",
-    school: "学校",
-    college: "学院",
-    major: "专业",
-    degree: "学历",
-    degreeLevel: "学位",
-    eduStart: "入学时间",
-    eduEnd: "毕业时间",
-    gpa: "GPA",
-    rank: "排名",
-    company: "公司",
-    department: "部门",
-    title: "职位",
-    workStart: "开始时间",
-    workEnd: "结束时间",
-    workCity: "工作城市",
-    workDesc: "工作描述",
-    certName: "证书名称",
-    certLevel: "证书等级",
-    certDate: "证书获得时间",
-    patentName: "专利名称",
-    patentType: "专利类型",
-    patentDate: "专利发表日期",
-    patentStage: "专利阶段",
-    patentAuthorRank: "专利作者排序",
-    paperName: "论文名称",
-    journalName: "期刊或会议名称",
-    journalLevel: "期刊或会议水平",
-    paperStatus: "论文发表状态",
-    paperDate: "论文接收或发表日期",
-    paperAuthorRank: "论文作者排序",
-    impactFactor: "影响因子",
-    awardName: "奖励名称",
-    awardCategory: "奖项类别",
-    awardLevel: "奖励级别",
-    awardGrade: "奖励等级",
-    awardDate: "获奖时间",
-    awardIssuer: "颁发单位",
-    familyName: "家庭成员姓名",
-    familyRelation: "家庭关系",
-    familyNote: "家庭关系备注",
-    familyInCompany: "是否在本单位工作",
-    projectDesc: "项目描述",
-    selfEvaluation: "自我评价",
-    skills: "专业技能",
-    emergencyName: "紧急联系人",
-    emergencyRelation: "与本人关系",
-    emergencyPhone: "紧急联系人电话"
-  };
 
   // src/core/date-widget.js
   var PICKER_CLASS_RE = /ant-picker|ant-calendar-picker|el-date-editor|ivu-date-picker|arco-picker|n-date-picker|van-calendar|flatpickr|react-datepicker|vdp-datepicker|datepicker|date-picker/i;
@@ -1191,7 +1315,13 @@
       const n = list[i];
       if (n === el2) break;
       if (isOurUI(n) || shouldSkip(n) || alreadyFilled(n)) continue;
-      const k = pickKey({ label: labelText(n), attr: attrText(n), hint: fieldHint(n), allowHint: false });
+      const k = pickKey({
+        label: labelText(n),
+        attr: attrText(n),
+        block: sectionBlockType(n),
+        hint: fieldHint(n),
+        allowHint: false
+      });
       if (k === startKey) return { node: n, key: k };
     }
     return null;
@@ -1221,7 +1351,13 @@
       return segments.get(row);
     };
     const fillSegment = (el2, group, rowText) => {
-      const rowKey = pickKey({ label: rowText, attr: "", hint: fieldHint(el2), allowHint: true });
+      const rowKey = pickKey({
+        label: rowText,
+        attr: "",
+        block: sectionBlockType(el2),
+        hint: fieldHint(el2),
+        allowHint: true
+      });
       if (!rowKey || !DATE_KEYS[rowKey]) return false;
       const date = splitDateTime(valueForField(rowKey, profile, rowIndexOf(el2, rowKey)));
       if (!date) return false;
@@ -1271,9 +1407,11 @@
         }
         if (all.some((n) => n.checked) && options.onlyEmpty) continue;
         const sample = all[0];
+        const sampleBlock = sectionBlockType(sample);
         let key2 = pickKey({
           label: labelText(sample),
           attr: attrText(sample),
+          block: sampleBlock,
           hint: fieldHint(sample),
           allowHint: false
         });
@@ -1281,6 +1419,7 @@
           key2 = pickKey({
             label: visibleText(rowContainer(sample), 80),
             attr: "",
+            block: sampleBlock,
             hint: fieldHint(sample),
             allowHint: true
           });
@@ -1308,7 +1447,8 @@
       const label = labelText(el2);
       const attr = attrText(el2);
       const rowText = visibleText(rowContainer(el2), 160);
-      let key = pickKey({ label, attr, hint: fieldHint(el2), allowHint: !label && !attr });
+      const block = sectionBlockType(el2);
+      let key = pickKey({ label, attr, block, hint: fieldHint(el2), allowHint: !label && !attr });
       let direct = false;
       if (!key) {
         const ex = matchExtra(profile, label, attr, rowText);
@@ -1386,7 +1526,9 @@
     patent: /专利/,
     paper: /论文|期刊/,
     award: /奖励|奖项|荣誉/,
-    family: /家庭|亲属/
+    family: /家庭|亲属/,
+    activity: /活动|社团/,
+    project: /项目|课题/
   };
   function targetBlockCount(profile, type) {
     const list = profile[GROUP_ARRAYS[type]];
@@ -1567,7 +1709,6 @@
       ["hobbies", "个人爱好", "text"]
     ]],
     ["其他常用长文本", [
-      ["projectDesc", "项目经历描述", "textarea"],
       ["selfEvaluation", "自我评价", "textarea"],
       ["skills", "专业技能", "textarea"]
     ]],
@@ -1863,6 +2004,8 @@
     renderBlocks(bd, "patents", "专利", "一张卡片一项专利。", PATENT_ITEM_FORM);
     renderBlocks(bd, "papers", "论文", "一张卡片一篇论文。", PAPER_ITEM_FORM);
     renderBlocks(bd, "awards", "奖励与荣誉", "一张卡片一项奖励。", AWARD_ITEM_FORM);
+    renderBlocks(bd, "projects", "项目经历", "一张卡片一个项目。", PROJECT_ITEM_FORM);
+    renderBlocks(bd, "activities", "社团与活动", "一张卡片一项活动经历。", ACTIVITY_ITEM_FORM);
     renderBlocks(bd, "family", "家庭关系", "一张卡片一位家庭成员。", FAMILY_ITEM_FORM);
     bd.appendChild(el("h4", null, "补充规则（认不出来的字段写这里）"));
     const extraBox = el("div");

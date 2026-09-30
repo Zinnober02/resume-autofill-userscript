@@ -6,6 +6,8 @@ export const PATENT_RE = /专利|发明专利|实用新型|外观设计/;
 export const PAPER_RE = /论文|期刊|学术成果|文献/;
 export const AWARD_RE = /奖励|奖项|荣誉|获奖|奖学金|竞赛/;
 export const FAMILY_RE = /家庭|亲属|家属/;
+export const ACTIVITY_RE = /活动|社团|社会实践/;
+export const PROJECT_RE = /项目|课题/;
 
 // 区块类型按关键词判断：同名或近名的字段（开始时间、姓名、关系）要靠它区分
 export const SECTION_RES = [
@@ -14,6 +16,8 @@ export const SECTION_RES = [
   ['award', AWARD_RE],
   ['family', FAMILY_RE],
   ['cert', CERT_RE],
+  ['activity', ACTIVITY_RE],
+  ['project', PROJECT_RE],
   ['edu', EDU_RE],
   ['work', WORK_RE],
 ];
@@ -37,6 +41,19 @@ export const norm = (s) => String(s == null ? '' : s)
 //   neg : 出现这些词就否决，避免把「公司名称」当成姓名
 //   ctx : 只在指定的区块内才生效，可以写多个区块
 export const RULES = [
+  // 带区块限定的规则放在前面：这些字段名（职务、开始时间、姓名、关系）在别处有别的含义，
+  // 先让专用规则有机会命中，通用的「职位」「姓名」规则排在后面
+  { key: 'activityEnd', re: /结束时间|结束日期|终止时间/, ctx: ['activity'] },
+  { key: 'activityStart', re: /开始时间|开始日期|起始时间/, ctx: ['activity'] },
+  { key: 'activityRole', re: /^职务$|担任职务|担任角色/, ctx: ['activity'] },
+  { key: 'activityName', re: /活动名称|社团名称|社会实践名称/, ctx: ['activity'] },
+  { key: 'activityDesc', re: /活动描述|活动内容|活动简介/, ctx: ['activity'] },
+
+  { key: 'projectEnd', re: /结束时间|结束日期|终止时间/, ctx: ['project'] },
+  { key: 'projectStart', re: /开始时间|开始日期|起始时间/, ctx: ['project'] },
+  { key: 'projectRole', re: /项目职务|项目角色|担任角色/, ctx: ['project'] },
+  { key: 'projectName', re: /项目名称|课题名称|项目标题/, ctx: ['project'] },
+
   { key: 'idType', re: /证件类型|证件类别|身份类型|证件种类/ },
   { key: 'idCard', re: /身份证|证件号码|证件号|身份号码|idcardno|idcardnumber|identityno|identitynumber|residentid/ },
   { key: 'englishName', re: /英文名|英文姓名|拼音姓名|拼音名|englishname|nameinenglish|nameinpinyin|pinyin|forename/ },
@@ -46,16 +63,16 @@ export const RULES = [
   { key: 'emergencyName', re: /紧急联系人|紧急情况联系人|监护人/ },
 
   { key: 'familyInCompany', re: /是否在.{0,8}(工作|任职)|在本单位工作|是否在.{0,8}集团/, ctx: ['family'] },
+  { key: 'familyNote', re: /备注|说明/, ctx: ['family'] },
   { key: 'familyRelation', re: /^关系$|与本人关系|亲属关系|家庭成员关系|家庭关系/, ctx: ['family'] },
   { key: 'familyName', re: /家庭成员姓名|家属姓名|亲属姓名|^姓名$/, ctx: ['family'] },
-  { key: 'familyNote', re: /备注|说明/, ctx: ['family'] },
 
   { key: 'certLevel', re: /证书等级|证书级别|资格等级/, ctx: ['cert'] },
   { key: 'certDate', re: /证书.{0,4}(时间|日期)|获得时间|取得时间/, ctx: ['cert'] },
   { key: 'certName', re: /证书名称|资格证书|专业资格证书|证书/, ctx: ['cert'] },
 
   { key: 'patentType', re: /专利类型|专利种类/, ctx: ['patent'] },
-  { key: 'patentStage', re: /申请阶段|受理阶段|审查阶段|公布阶段|授权阶段|当前阶段|专利阶段/, ctx: ['patent'] },
+  { key: 'patentStage', re: /申请阶段|受理阶段|审查阶段|公布阶段|授权阶段|当前阶段|专利阶段|发表阶段/, ctx: ['patent'] },
   { key: 'patentDate', re: /发表日期|申请日期|公开日期|授权日期/, ctx: ['patent'] },
   { key: 'patentAuthorRank', re: /作者排序|作者排名|第几作者/, ctx: ['patent', 'paper'] },
   { key: 'patentName', re: /专利名称|专利号|专利标题|发明名称/, ctx: ['patent'] },
@@ -120,13 +137,11 @@ export const RULES = [
   { key: 'department', re: /部门|department|division|businessunit/, neg: /学院|院系|系别|部门负责人/ },
   { key: 'title', re: /职位|职务|岗位|jobtitle|position|^title$/, neg: /意向|期望|应聘|申请|目标|职位类别|岗位类别|职位性质/ },
   { key: 'workDesc', re: /工作内容|工作描述|工作职责|职责描述|岗位职责|主要工作|工作业绩|实习内容|工作成果|工作说明|responsibilit|jobdescription|duties/ },
-  { key: 'projectDesc', re: /项目描述|项目简介|项目内容|项目经历描述|项目经验描述|项目职务|项目名称|projectdescription|projectexperience/ },
+  { key: 'projectDesc', re: /项目描述|项目简介|项目内容|项目职责|项目经历描述|项目经验描述|projectdescription|projectexperience/ },
   { key: 'workEnd', re: /离职时间|离职日期|^离职$|离职|结束时间|结束日期|转正时间|enddate/, ctx: 'work' },
   { key: 'workStart', re: /入职时间|入职日期|^入职$|入职|起始时间|开始时间|开始日期|startdate/, ctx: 'work' },
-  { key: 'activityName', re: /活动名称|社团名称/, ctx: ['work'] },
-  { key: 'activityDesc', re: /活动描述|活动内容/, ctx: ['work'] },
 
-  { key: 'englishLevel', re: /英语水平|英语等级|英语能力|外语水平|英语四六级|四级|六级|cet/, neg: /其他外语|第二外语/ },
+  { key: 'englishLevel', re: /英语水平|英语等级|英语能力|英语成绩|外语水平|英语四六级|四级|六级|cet/, neg: /其他外语|第二外语/ },
   { key: 'otherLanguages', re: /其他外语|第二外语|其他语种/ },
   { key: 'itSkills', re: /it技能|计算机水平|计算机等级|技能掌握程度|办公软件/ },
   { key: 'hobbies', re: /爱好|兴趣特长|业余爱好/ },
@@ -141,18 +156,42 @@ function ctxMatches(ruleCtx, ctx) {
   return ruleCtx === ctx;
 }
 
+// 一个字段名可能同时匹配多条规则（「开始时间」在教育、工作、活动里都成立）。
+// 这里把所有命中的 key 都返回，交给调用方判断归属是否唯一
+export function matchKeys(t) {
+  const label = norm(t.label || '');
+  const attr = norm(t.attr || '');
+  const passes = [label, attr, label + '|' + attr];
+  const out = [];
+  for (let i = 0; i < passes.length; i += 1) {
+    const src = passes[i];
+    if (!src) continue;
+    for (let j = 0; j < RULES.length; j += 1) {
+      const r = RULES[j];
+      if (!r.re.test(src)) continue;
+      if (r.neg && r.neg.test(src)) continue;
+      if (out.indexOf(r.key) < 0) out.push(r.key);
+    }
+    if (out.length) break;
+  }
+  return out;
+}
+
 // 从三段文字里挑字段名：① 旁边写的标签 ② 输入框的 name/id/placeholder ③ 所在区块的文字
+//   block     : 明确的区块类型，比从文字里猜更可靠
+//   ignoreCtx : 忽略区块限制，用于判断一段区块里都有哪些字段
 export function pickKey(t) {
   const label = norm(t.label || '');
   const attr = norm(t.attr || '');
-  const ctx = sectionType(norm(t.hint || ''));
+  const ctx = t.block || sectionType(norm(t.hint || ''));
+  const loose = !!t.ignoreCtx;
   const passes = [label, attr, label + '|' + attr];
   for (let i = 0; i < passes.length; i += 1) {
     const src = passes[i];
     if (!src) continue;
     for (let j = 0; j < RULES.length; j += 1) {
       const r = RULES[j];
-      if (r.ctx && !ctxMatches(r.ctx, ctx)) continue;
+      if (!loose && r.ctx && !ctxMatches(r.ctx, ctx)) continue;
       if (!r.re.test(src)) continue;
       if (r.neg && r.neg.test(src)) continue;
       return r.key;
@@ -162,7 +201,7 @@ export function pickKey(t) {
     const h = norm(t.hint);
     for (let j = 0; j < RULES.length; j += 1) {
       const r = RULES[j];
-      if (r.ctx && !ctxMatches(r.ctx, ctx)) continue;
+      if (!loose && r.ctx && !ctxMatches(r.ctx, ctx)) continue;
       if (!r.re.test(h)) continue;
       if (r.neg && r.neg.test(h)) continue;
       return r.key;

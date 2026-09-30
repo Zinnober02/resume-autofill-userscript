@@ -1,6 +1,9 @@
 // 填充引擎：扫描页面控件，逐个识别字段并写入资料
 import { pickKey, norm } from './rules.js';
-import { deepQueryAll, labelText, attrText, visibleText, rowContainer, sectionContainer, fieldHint, visible, isOurUI } from './dom.js';
+import {
+  deepQueryAll, labelText, attrText, visibleText, rowContainer,
+  sectionContainer, sectionBlockType, fieldHint, visible, isOurUI,
+} from './dom.js';
 import { setVal, bestOptionIndex, isCustomSelect, fillCustomSelect } from './form-control.js';
 import { groupOf, DATE_KEYS, valueForField, matchExtra, formatValue, splitDateTime, FIELD_NAMES } from './value.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
@@ -109,7 +112,13 @@ function pairedStart(el, key) {
     const n = list[i];
     if (n === el) break;
     if (isOurUI(n) || shouldSkip(n) || alreadyFilled(n)) continue;
-    const k = pickKey({ label: labelText(n), attr: attrText(n), hint: fieldHint(n), allowHint: false });
+    const k = pickKey({
+      label: labelText(n),
+      attr: attrText(n),
+      block: sectionBlockType(n),
+      hint: fieldHint(n),
+      allowHint: false,
+    });
     if (k === startKey) return { node: n, key: k };
   }
   return null;
@@ -146,7 +155,13 @@ export async function runFill(profile, opts) {
 
   // 年 / 月 / 日 分开的下拉框或输入框：整组一起写
   const fillSegment = (el, group, rowText) => {
-    const rowKey = pickKey({ label: rowText, attr: '', hint: fieldHint(el), allowHint: true });
+    const rowKey = pickKey({
+      label: rowText,
+      attr: '',
+      block: sectionBlockType(el),
+      hint: fieldHint(el),
+      allowHint: true,
+    });
     if (!rowKey || !DATE_KEYS[rowKey]) return false;
     const date = splitDateTime(valueForField(rowKey, profile, rowIndexOf(el, rowKey)));
     if (!date) return false;
@@ -201,9 +216,11 @@ export async function runFill(profile, opts) {
       if (all.some((n) => n.checked) && options.onlyEmpty) continue;
       const sample = all[0];
       // 单选按钮自己的文字是「男/女」，组名要从整行文字里找
+      const sampleBlock = sectionBlockType(sample);
       let key = pickKey({
         label: labelText(sample),
         attr: attrText(sample),
+        block: sampleBlock,
         hint: fieldHint(sample),
         allowHint: false,
       });
@@ -211,6 +228,7 @@ export async function runFill(profile, opts) {
         key = pickKey({
           label: visibleText(rowContainer(sample), 80),
           attr: '',
+          block: sampleBlock,
           hint: fieldHint(sample),
           allowHint: true,
         });
@@ -236,7 +254,8 @@ export async function runFill(profile, opts) {
     const label = labelText(el);
     const attr = attrText(el);
     const rowText = visibleText(rowContainer(el), 160);
-    let key = pickKey({ label, attr, hint: fieldHint(el), allowHint: !label && !attr });
+    const block = sectionBlockType(el);
+    let key = pickKey({ label, attr, block, hint: fieldHint(el), allowHint: !label && !attr });
     let direct = false;
     if (!key) {
       const ex = matchExtra(profile, label, attr, rowText);

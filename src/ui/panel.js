@@ -7,7 +7,7 @@ import { addMissingBlocks } from '../core/block-adder.js';
 import { watchNewBlocks } from '../core/watcher.js';
 import {
   EDU_ITEM_FORM, WORK_ITEM_FORM, CERT_ITEM_FORM, PATENT_ITEM_FORM,
-  PAPER_ITEM_FORM, AWARD_ITEM_FORM, FAMILY_ITEM_FORM,
+  PAPER_ITEM_FORM, AWARD_ITEM_FORM, FAMILY_ITEM_FORM, ACTIVITY_ITEM_FORM, PROJECT_ITEM_FORM,
 } from '../core/profile-schema.js';
 import { GROUP_ARRAYS } from '../core/value.js';
 import { RUN_MSG, RES_MSG, FRAME_ID, relayToChildren } from '../core/messaging.js';
@@ -92,7 +92,6 @@ const FORM_GROUPS = [
     ['hobbies', '个人爱好', 'text'],
   ]],
   ['其他常用长文本', [
-    ['projectDesc', '项目经历描述', 'textarea'],
     ['selfEvaluation', '自我评价', 'textarea'],
     ['skills', '专业技能', 'textarea'],
   ]],
@@ -355,6 +354,8 @@ function renderEditor(bd) {
   renderBlocks(bd, 'patents', '专利', '一张卡片一项专利。', PATENT_ITEM_FORM);
   renderBlocks(bd, 'papers', '论文', '一张卡片一篇论文。', PAPER_ITEM_FORM);
   renderBlocks(bd, 'awards', '奖励与荣誉', '一张卡片一项奖励。', AWARD_ITEM_FORM);
+  renderBlocks(bd, 'projects', '项目经历', '一张卡片一个项目。', PROJECT_ITEM_FORM);
+  renderBlocks(bd, 'activities', '社团与活动', '一张卡片一项活动经历。', ACTIVITY_ITEM_FORM);
   renderBlocks(bd, 'family', '家庭关系', '一张卡片一位家庭成员。', FAMILY_ITEM_FORM);
 
   bd.appendChild(el('h4', null, '补充规则（认不出来的字段写这里）'));

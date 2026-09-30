@@ -14,7 +14,7 @@ export const RES_MSG = '__resume_autofill_result__';
 // 资料结构要求几个数组都在，这里给测试用的资料补上空数组
 export function storageWith(profile) {
   const full = Object.assign(
-    { educations: [], works: [], certificates: [], patents: [], papers: [], awards: [], family: [], extra: [] },
+    { educations: [], works: [], certificates: [], patents: [], papers: [], awards: [], family: [], activities: [], projects: [], extra: [] },
     profile,
   );
   return { v: 1, current: '默认', profiles: { '默认': full } };
