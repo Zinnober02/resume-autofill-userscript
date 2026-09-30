@@ -10,7 +10,9 @@ import {
   splitDateTime, FIELD_NAMES,
 } from './value.js';
 import { splitAddress, addressRole, addressSegmentGroup, fillAddressSegment } from './address.js';
-import { isSearchSelect, fillSearchSelect } from './search-select.js';
+import {
+  isSearchSelect, fillSearchSelect, isModalPicker, isPickerHelper, fillModalPicker,
+} from './search-select.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
 import { blockIndexOf } from './blocks.js';
 
@@ -139,6 +141,18 @@ async function applyValue(el, key, value, options, profile, st) {
     return;
   }
 
+  // 学校、专业这类字段：只读的展示框，点开弹层再在弹层里选候选
+  if (isModalPicker(el)) {
+    if (await fillModalPicker(el, value)) {
+      st.count += 1;
+      st.filled.push(name);
+      if (options.highlight) highlight(el);
+    } else {
+      st.manual.push(name + '：弹出层里没有匹配项，请手动选');
+    }
+    return;
+  }
+
   if (isCustomSelect(el) && el.readOnly) {
     const ok = await fillCustomSelect(el, value);
     if (ok) {
@@ -198,7 +212,11 @@ export async function runFill(profile, opts) {
 
   const skipNode = (el) => {
     if (isOurUI(el)) return true;
+    // 弹层控件里的辅助输入框（隐藏的 input-query、弹层自己的搜索框）不作为独立字段
+    if (isPickerHelper(el)) return true;
     if (options.fillDatePickers && el.tagName === 'INPUT' && el.readOnly && isDatePicker(el)) return false;
+    // 学校 / 专业这类字段是只读的展示框，点它才会弹出候选弹层
+    if (el.tagName === 'INPUT' && el.readOnly && isModalPicker(el)) return false;
     return shouldSkip(el);
   };
 

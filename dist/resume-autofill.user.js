@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.7.3
+// @version      1.8.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -1092,7 +1092,7 @@
       const node = list[i];
       const text = norm(node.textContent);
       if (!text || text === "请选择") continue;
-      if (String(node.className || "").indexOf("no-results") >= 0) continue;
+      if (/no-results|search-no/.test(String(node.className || ""))) continue;
       let score = 0;
       if (text === w) score = 100;
       else if (text.indexOf(w) >= 0) score = 60;
@@ -1121,42 +1121,85 @@
       } catch (e) {
       }
     }
-    await sleep(220);
+    await sleep(120);
     const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
-    if (box) setVal(box, "");
-    const settled = () => {
+    if (box) setVal(box, want);
+    for (let i = 0; i < 12; i += 1) {
+      await sleep(180);
       const idx = bestOptionIndex(el2, want, false);
       if (idx >= 0) {
         setVal(el2, el2.options[idx].value);
         return true;
       }
-      return false;
-    };
-    let hit = null;
-    for (let i = 0; i < 8 && !hit; i += 1) {
-      await sleep(180);
-      if (settled()) return true;
-      hit = pickOption(optionsIn(wrap), want);
-    }
-    if (!hit && box) {
-      setVal(box, want);
-      for (let i = 0; i < 10 && !hit; i += 1) {
-        await sleep(180);
-        if (settled()) return true;
-        hit = pickOption(optionsIn(wrap), want);
+      const hit = pickOption(optionsIn(wrap), want);
+      if (!hit) continue;
+      clickNode(hit);
+      for (let k = 0; k < 8; k += 1) {
+        await sleep(80);
+        if (el2.tagName !== "SELECT") return true;
+        if (String(el2.value || "").trim()) return true;
       }
+      return el2.tagName !== "SELECT";
     }
-    if (!hit) {
-      if (box) setVal(box, "");
-      if (toggle) clickNode(toggle);
-      return false;
+    if (box) setVal(box, "");
+    if (toggle) clickNode(toggle);
+    return false;
+  }
+  var PICKER_INPUT = 'input[readonly][school-or-subject="1"]';
+  var PICKER_PANEL = ".search-result-li, .school-m, .school-b, .main-data";
+  var PICKER_ITEM = ".search-result-li li, .search-result-li a, .school-m li, .school-m a, .school-b li, .school-b a, .main-data li, .main-data a, .main-data p, .main-data span";
+  function pickerRoot(el2) {
+    let node = el2.parentElement;
+    for (let i = 0; node && node !== document.body && i < 10; i += 1) {
+      if (node.querySelector && node.querySelector(PICKER_INPUT) && node.querySelector(PICKER_PANEL)) return node;
+      node = node.parentElement;
     }
-    clickNode(hit);
-    for (let i = 0; i < 8; i += 1) {
-      await sleep(80);
-      if (el2.tagName === "SELECT" && String(el2.value || "").trim()) return true;
+    return null;
+  }
+  function isModalPicker(el2) {
+    if (!el2 || el2.tagName !== "INPUT" || !el2.readOnly) return false;
+    if (el2.getAttribute("school-or-subject") !== "1") return false;
+    return !!pickerRoot(el2);
+  }
+  function isPickerHelper(el2) {
+    if (!el2 || el2.tagName !== "INPUT" || el2.readOnly) return false;
+    return !!pickerRoot(el2);
+  }
+  function pickerCandidates(root) {
+    const list = root.querySelectorAll(PICKER_ITEM);
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      if (isOurUI(node) || !visible(node)) continue;
+      if (/no-results|search-no|model-close/.test(String(node.className || ""))) continue;
+      out.push(node);
     }
-    return el2.tagName !== "SELECT";
+    return out;
+  }
+  async function fillModalPicker(el2, value) {
+    const want = String(value == null ? "" : value).trim();
+    if (!want) return false;
+    const root = pickerRoot(el2);
+    if (!root) return false;
+    clickNode(el2);
+    await sleep(300);
+    const box = root.querySelector(".search-school, .search-job");
+    if (box) setVal(box, want);
+    const model = root.querySelector('input[school-or-subject="2"]');
+    for (let i = 0; i < 12; i += 1) {
+      const hit = pickOption(pickerCandidates(root), want);
+      if (hit) {
+        clickNode(hit);
+        for (let k = 0; k < 10; k += 1) {
+          await sleep(120);
+          if (String(el2.value || "").trim()) return true;
+          if (model && norm(model.value) === norm(want)) return true;
+        }
+        return false;
+      }
+      await sleep(180);
+    }
+    return false;
   }
 
   // src/core/date-widget.js
@@ -1540,6 +1583,16 @@
       }
       return;
     }
+    if (isModalPicker(el2)) {
+      if (await fillModalPicker(el2, value)) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el2);
+      } else {
+        st.manual.push(name + "：弹出层里没有匹配项，请手动选");
+      }
+      return;
+    }
     if (isCustomSelect(el2) && el2.readOnly) {
       const ok = await fillCustomSelect(el2, value);
       if (ok) {
@@ -1594,7 +1647,9 @@
     const segments = /* @__PURE__ */ new Map();
     const skipNode = (el2) => {
       if (isOurUI(el2)) return true;
+      if (isPickerHelper(el2)) return true;
       if (options.fillDatePickers && el2.tagName === "INPUT" && el2.readOnly && isDatePicker(el2)) return false;
+      if (el2.tagName === "INPUT" && el2.readOnly && isModalPicker(el2)) return false;
       return shouldSkip(el2);
     };
     const indexCache = /* @__PURE__ */ new Map();
