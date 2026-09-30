@@ -138,6 +138,24 @@ test('地址下拉的搜索关键词用省名，不拿完整地址去搜', async
   assert.equal(select.value, '浙江省');
 });
 
+test('省、市、区各自的框只拿自己那一段', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="row"><span>户口所在地</span>',
+    '<select name="prov"><option value="">请选择</option><option>浙江省</option><option>江苏省</option></select>',
+    '<select name="city"><option value="">请选择</option><option>杭州市</option><option>南京市</option></select>',
+    '<select name="area"><option value="">请选择</option><option>西湖区</option><option>玄武区</option></select>',
+    '</div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { hukou: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="prov"]').value, '浙江省');
+  assert.equal(field(dom, 'select[name="city"]').value, '杭州市');
+  assert.equal(field(dom, 'select[name="area"]').value, '西湖区');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
 test('下拉里确实没有能对上的选项时记进需要手动处理', async () => {
   const html = [
     '<!doctype html><html><body><form>',

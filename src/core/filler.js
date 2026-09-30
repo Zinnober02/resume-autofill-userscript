@@ -9,7 +9,7 @@ import {
   groupOf, DATE_KEYS, ADDRESS_KEYS, valueForField, matchExtra, formatValue,
   splitDateTime, FIELD_NAMES,
 } from './value.js';
-import { splitAddress, addressSegmentGroup, fillAddressSegment } from './address.js';
+import { splitAddress, addressRole, addressSegmentGroup, fillAddressSegment } from './address.js';
 import { isSearchSelect, fillSearchSelect } from './search-select.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
 import { blockIndexOf } from './blocks.js';
@@ -52,17 +52,14 @@ export function highlight(el) {
   } catch (e) { /* 忽略 */ }
 }
 
-// 地址类下拉的选项是省、市、区，拿完整地址去搜一个都匹配不上，
-// 所以按从大到小的顺序给关键词，整串放到最后兜底
-function addressWords(value) {
+// 地址下拉按自己的角色取一段：省的框给省，市的框给市，区县的框给区县。
+// 看不出角色时（「籍贯」这种整体字段）按省处理
+function addressValueFor(el, value) {
   const addr = splitAddress(value);
-  const words = [addr.province, addr.city, addr.district, String(value || '').trim()];
-  const out = [];
-  words.forEach((word) => {
-    const w = String(word || '').trim();
-    if (w && out.indexOf(w) < 0) out.push(w);
-  });
-  return out.length ? out : [String(value || '').trim()];
+  const role = addressRole(el);
+  if (role === 'city') return addr.city || addr.province;
+  if (role === 'district') return addr.district || addr.city || addr.province;
+  return addr.province || String(value || '').trim();
 }
 
 // 手机号前面常常先有一个国家 / 地区代码下拉，电信上就是这样
@@ -92,36 +89,27 @@ async function applyValue(el, key, value, options, profile, st) {
   }
   if (el.tagName === 'SELECT') {
     const preferEnrolled = key === 'degree' && /在读|应届/.test(String(profile.degreeNote || '在读'));
-    // 地址类下拉常常只到省或市，整串匹配不上就退到上一级
-    const words = ADDRESS_KEYS[key] ? addressWords(value) : [value];
-    let idx = -1;
-    let used = '';
-    for (let i = 0; i < words.length && idx < 0; i += 1) {
-      idx = bestOptionIndex(el, words[i], preferEnrolled);
-      used = words[i];
-    }
+    const want = ADDRESS_KEYS[key] ? addressValueFor(el, value) : value;
+    const idx = bestOptionIndex(el, want, preferEnrolled);
     if (idx >= 0) {
       const text = String(el.options[idx].text).trim();
       setVal(el, el.options[idx].value);
       st.count += 1;
       st.filled.push(name + ' → ' + text);
       if (options.highlight) highlight(el);
-      if (used !== value) st.manual.push(name + '：下拉框只到「' + text + '」，后面的部分请手动补全');
+      if (want !== value) st.manual.push(name + '：这个下拉只到「' + text + '」，后面的部分请手动补全');
       return;
     }
-    // 学校、公司这类字段是「点开、输入关键词、再选候选」的控件，直接写值组件不认。
-    // 地址类的下拉多半只认到省或市，逐级往下试
+    // 学校、公司这类字段是「点开、输入关键词、再选候选」的控件，直接写值组件不认
     if (isSearchSelect(el)) {
-      const words = ADDRESS_KEYS[key] ? addressWords(value) : [value];
-      for (let i = 0; i < words.length; i += 1) {
-        if (await fillSearchSelect(el, words[i])) {
-          st.count += 1;
-          st.filled.push(name + ' → ' + words[i]);
-          if (options.highlight) highlight(el);
-          return;
-        }
+      const search = ADDRESS_KEYS[key] ? addressValueFor(el, value) : value;
+      if (await fillSearchSelect(el, search)) {
+        st.count += 1;
+        st.filled.push(name + ' → ' + search);
+        if (options.highlight) highlight(el);
+      } else {
+        st.manual.push(name + '：可搜索下拉里没有匹配项，请手动选');
       }
-      st.manual.push(name + '：可搜索下拉里没有匹配项，请手动选');
       return;
     }
     if (isCustomSelect(el)) {

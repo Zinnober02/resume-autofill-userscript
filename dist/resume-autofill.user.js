@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.7.2
+// @version      1.7.3
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -1462,15 +1462,12 @@
     } catch (e) {
     }
   }
-  function addressWords(value) {
+  function addressValueFor(el2, value) {
     const addr = splitAddress(value);
-    const words = [addr.province, addr.city, addr.district, String(value || "").trim()];
-    const out = [];
-    words.forEach((word) => {
-      const w = String(word || "").trim();
-      if (w && out.indexOf(w) < 0) out.push(w);
-    });
-    return out.length ? out : [String(value || "").trim()];
+    const role = addressRole(el2);
+    if (role === "city") return addr.city || addr.province;
+    if (role === "district") return addr.district || addr.city || addr.province;
+    return addr.province || String(value || "").trim();
   }
   function isCountrySelect(el2) {
     const text = Array.from(el2.options).map((o) => o.textContent).join(" ");
@@ -1496,33 +1493,26 @@
     }
     if (el2.tagName === "SELECT") {
       const preferEnrolled = key === "degree" && /在读|应届/.test(String(profile.degreeNote || "在读"));
-      const words = ADDRESS_KEYS[key] ? addressWords(value) : [value];
-      let idx = -1;
-      let used = "";
-      for (let i = 0; i < words.length && idx < 0; i += 1) {
-        idx = bestOptionIndex(el2, words[i], preferEnrolled);
-        used = words[i];
-      }
+      const want = ADDRESS_KEYS[key] ? addressValueFor(el2, value) : value;
+      const idx = bestOptionIndex(el2, want, preferEnrolled);
       if (idx >= 0) {
         const text = String(el2.options[idx].text).trim();
         setVal(el2, el2.options[idx].value);
         st.count += 1;
         st.filled.push(name + " → " + text);
         if (options.highlight) highlight(el2);
-        if (used !== value) st.manual.push(name + "：下拉框只到「" + text + "」，后面的部分请手动补全");
+        if (want !== value) st.manual.push(name + "：这个下拉只到「" + text + "」，后面的部分请手动补全");
         return;
       }
       if (isSearchSelect(el2)) {
-        const words2 = ADDRESS_KEYS[key] ? addressWords(value) : [value];
-        for (let i = 0; i < words2.length; i += 1) {
-          if (await fillSearchSelect(el2, words2[i])) {
-            st.count += 1;
-            st.filled.push(name + " → " + words2[i]);
-            if (options.highlight) highlight(el2);
-            return;
-          }
+        const search = ADDRESS_KEYS[key] ? addressValueFor(el2, value) : value;
+        if (await fillSearchSelect(el2, search)) {
+          st.count += 1;
+          st.filled.push(name + " → " + search);
+          if (options.highlight) highlight(el2);
+        } else {
+          st.manual.push(name + "：可搜索下拉里没有匹配项，请手动选");
         }
-        st.manual.push(name + "：可搜索下拉里没有匹配项，请手动选");
         return;
       }
       if (isCustomSelect(el2)) {
