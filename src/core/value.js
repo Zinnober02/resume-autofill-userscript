@@ -66,6 +66,9 @@ export function groupOf(key) {
   return '';
 }
 
+// 地址类字段：资料里存省市区整串，遇到省 / 市 / 区分开的控件时分段填
+export const ADDRESS_KEYS = { hometown: 1, hukou: 1, currentCity: 1, gaokaoOrigin: 1 };
+
 // 需要按日期格式填写的字段，用来识别年 / 月 / 日分开的控件组
 export const DATE_KEYS = {
   birthday: 1, eduStart: 1, eduEnd: 1, workStart: 1, workEnd: 1, availableDate: 1,

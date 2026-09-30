@@ -5,11 +5,23 @@ import {
   sectionContainer, sectionBlockType, fieldHint, visible, isOurUI,
 } from './dom.js';
 import { setVal, bestOptionIndex, isCustomSelect, fillCustomSelect } from './form-control.js';
-import { groupOf, DATE_KEYS, valueForField, matchExtra, formatValue, splitDateTime, FIELD_NAMES } from './value.js';
+import {
+  groupOf, DATE_KEYS, ADDRESS_KEYS, valueForField, matchExtra, formatValue,
+  splitDateTime, FIELD_NAMES,
+} from './value.js';
+import { splitAddress, addressSegmentGroup, fillAddressSegment } from './address.js';
+import { isSearchSelect, fillSearchSelect } from './search-select.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
 import { blockIndexOf } from './blocks.js';
 
-const START_OF_END = { eduEnd: 'eduStart', workEnd: 'workStart' };
+// 右边这类字段要先填左边那个才能填：结束时间要先有开始时间，证件号码要先选证件类型
+const PREREQUISITE = {
+  eduEnd: 'eduStart',
+  workEnd: 'workStart',
+  projectEnd: 'projectStart',
+  activityEnd: 'activityStart',
+  idCard: 'idType',
+};
 
 export function describe(el, key) {
   const lb = labelText(el) || (el.getAttribute && el.getAttribute('placeholder')) || key || '';
@@ -52,13 +64,32 @@ async function applyValue(el, key, value, options, profile, st) {
       st.count += 1;
       st.filled.push(name + ' → ' + text);
       if (options.highlight) highlight(el);
-    } else if (isCustomSelect(el)) {
-      const ok = await fillCustomSelect(el, value);
-      if (ok) { st.count += 1; st.filled.push(name); }
-      else st.manual.push(name + '：下拉框没有合适选项，请手动选');
-    } else {
-      st.manual.push(name + '：下拉框没有合适选项，请手动选');
+      return;
     }
+    // 学校、公司这类字段是「点开、输入关键词、再选候选」的控件，直接写值组件不认
+    if (isSearchSelect(el)) {
+      const ok = await fillSearchSelect(el, value);
+      if (ok) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el);
+      } else {
+        st.manual.push(name + '：可搜索下拉里没有匹配项，请手动选');
+      }
+      return;
+    }
+    if (isCustomSelect(el)) {
+      const ok = await fillCustomSelect(el, value);
+      if (ok) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el);
+      } else {
+        st.manual.push(name + '：下拉框没有合适选项，请手动选');
+      }
+      return;
+    }
+    st.manual.push(name + '：下拉框没有合适选项，请手动选');
     return;
   }
 
@@ -103,7 +134,7 @@ async function applyValue(el, key, value, options, profile, st) {
 
 // 结束时间往往要参照开始时间，先填同一块里的开始时间
 function pairedStart(el, key) {
-  const startKey = START_OF_END[key];
+  const startKey = PREREQUISITE[key];
   if (!startKey) return null;
   const scope = rowContainer(el) || sectionContainer(el);
   if (!scope || !scope.querySelectorAll) return null;
@@ -151,6 +182,30 @@ export async function runFill(profile, opts) {
     if (!row) return null;
     if (!segments.has(row)) segments.set(row, dateSegmentGroup(el));
     return segments.get(row);
+  };
+
+  const addressGroups = new Map();
+  const addressGroupOf = (el) => {
+    const row = rowContainer(el);
+    if (!row) return null;
+    if (!addressGroups.has(row)) addressGroups.set(row, addressSegmentGroup(el));
+    return addressGroups.get(row);
+  };
+
+  // 省 / 市 / 区分开的下拉或输入框：整组一起填，选完一级等下一级的选项出来
+  const fillAddressGroup = async (group, key) => {
+    const name = FIELD_NAMES[key] || key;
+    const address = splitAddress(valueForField(key, profile, 1));
+    if (!address.province && !address.city) return false;
+    const res = await fillAddressSegment(group, address);
+    group.nodes.forEach((n) => handled.add(n));
+    if (res.written) {
+      st.count += res.written;
+      st.filled.push(name + '（省 / 市 / 区分开填写）');
+      if (options.highlight) group.nodes.forEach((n) => highlight(n));
+    }
+    if (res.blocked) st.manual.push(name + '：省 / 市 / 区控件没有能选中的值，请手动选');
+    return res.written > 0 || res.blocked > 0;
   };
 
   // 年 / 月 / 日 分开的下拉框或输入框：整组一起写
@@ -264,6 +319,23 @@ export async function runFill(profile, opts) {
     if (!key) {
       const group = segmentOf(el);
       if (group && fillSegment(el, group, rowText)) continue;
+    }
+    if (ADDRESS_KEYS[key]) {
+      const addrGroup = addressGroupOf(el);
+      if (addrGroup && await fillAddressGroup(addrGroup, key)) continue;
+    }
+    if (!key) {
+      const addrGroup = addressGroupOf(el);
+      if (addrGroup) {
+        const rowKey = pickKey({
+          label: rowText,
+          attr: '',
+          block,
+          hint: fieldHint(el),
+          allowHint: true,
+        });
+        if (rowKey && ADDRESS_KEYS[rowKey] && await fillAddressGroup(addrGroup, rowKey)) continue;
+      }
     }
 
     if (!key) {

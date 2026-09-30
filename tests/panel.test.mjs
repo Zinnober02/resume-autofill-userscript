@@ -70,6 +70,24 @@ test('教育经历按卡片增删，保存后写进 educations 数组', async ()
   assert.equal(saved.profiles[saved.current].educations[0].school, '示例大学');
 });
 
+test('日期用日期控件，省市区用三级联动', async () => {
+  const { window } = await createPage(PAGE);
+  const shadow = shadowOf(window);
+  shadow.querySelector('.pill').click();
+  buttonByText(shadow, '编辑资料').click();
+  const dates = shadow.querySelectorAll('input[type="date"]');
+  assert.ok(dates.length >= 2, '出生日期与到岗时间应该是日期控件');
+  const regions = shadow.querySelectorAll('.region');
+  assert.equal(regions.length, 4, '籍贯、户口所在地、现居城市、高考生源地应该是三级联动');
+  const selects = regions[0].querySelectorAll('select');
+  assert.equal(selects.length, 3);
+  assert.ok(selects[0].options.length > 30, '省下拉应该有全国省份');
+  assert.equal(selects[1].options.length, 1, '没选省之前市是空的');
+  selects[0].value = selects[0].options[1].value;
+  selects[0].dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.ok(selects[1].options.length > 1, '选了省之后市应该有选项');
+});
+
 test('补充规则能加一条并随资料一起保存', async () => {
   const { window, store } = await createPage(PAGE);
   const shadow = shadowOf(window);

@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.5.0
+// @version      1.6.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -291,6 +291,7 @@
     }
     return "";
   }
+  var ADDRESS_KEYS = { hometown: 1, hukou: 1, currentCity: 1, gaokaoOrigin: 1 };
   var DATE_KEYS = {
     birthday: 1,
     eduStart: 1,
@@ -771,8 +772,8 @@
     ["major", "专业", "text"],
     ["degree", "学历", "select", ["", "硕士", "博士", "本科", "大专"]],
     ["degreeLevel", "学位", "select", ["", "学士", "硕士", "博士"]],
-    ["eduStart", "入学时间", "text", "如 2025-09-01"],
-    ["eduEnd", "毕业时间", "text", "如 2027-06-01"],
+    ["eduStart", "入学时间", "date"],
+    ["eduEnd", "毕业时间", "date"],
     ["gpa", "GPA/绩点", "text"],
     ["rank", "排名", "text"]
   ];
@@ -781,19 +782,19 @@
     ["department", "部门", "text"],
     ["title", "职位", "text"],
     ["workCity", "工作城市", "text"],
-    ["workStart", "开始时间", "text", "如 2026-06-01"],
-    ["workEnd", "结束时间", "text", "如 2026-09-01"],
+    ["workStart", "开始时间", "date"],
+    ["workEnd", "结束时间", "date"],
     ["workDesc", "工作内容描述", "textarea"]
   ];
   var CERT_ITEM_FORM = [
     ["certName", "证书名称", "text"],
     ["certLevel", "等级", "text"],
-    ["certDate", "获得时间", "text", "如 2024-01-01"]
+    ["certDate", "获得时间", "date"]
   ];
   var PATENT_ITEM_FORM = [
     ["patentName", "专利名称", "text"],
     ["patentType", "专利类型", "select", ["", "发明专利", "实用新型专利", "外观设计专利"]],
-    ["patentDate", "发表日期", "text", "如 2025-01-01"],
+    ["patentDate", "发表日期", "date"],
     ["patentStage", "当前阶段", "select", ["", "申请阶段", "受理阶段", "初步审查阶段", "公布阶段", "实质审查阶段", "授权阶段"]],
     ["patentAuthorRank", "作者排序", "select", ["", "第一作者", "前三作者", "其他作者"]]
   ];
@@ -802,7 +803,7 @@
     ["journalName", "期刊或会议名称", "text"],
     ["journalLevel", "期刊或会议水平", "select", ["", "SCI", "SCI-E", "EI", "IEEE", "ISTP", "中文核心期刊", "其他"]],
     ["paperStatus", "发表状态", "select", ["", "已发表", "已接收", "投稿中", "其它"]],
-    ["paperDate", "接收或发表日期", "text", "如 2025-01-01"],
+    ["paperDate", "接收或发表日期", "date"],
     ["paperAuthorRank", "作者排序", "select", ["", "第一作者", "前三作者", "其他作者"]],
     ["impactFactor", "影响因子", "text"]
   ];
@@ -811,21 +812,21 @@
     ["awardCategory", "奖项类别", "select", ["", "奖学金", "竞赛类", "其它类"]],
     ["awardLevel", "奖励级别", "select", ["", "国际级", "国家级", "省部级", "地市级", "院校级", "其他"]],
     ["awardGrade", "奖励等级", "select", ["", "一等", "二等", "三等", "其它"]],
-    ["awardDate", "获奖时间", "text", "如 2024-01-01"],
+    ["awardDate", "获奖时间", "date"],
     ["awardIssuer", "颁发单位", "text"]
   ];
   var ACTIVITY_ITEM_FORM = [
     ["activityName", "活动名称", "text"],
     ["activityRole", "担任职务", "text"],
-    ["activityStart", "开始时间", "text", "如 2024-09-01"],
-    ["activityEnd", "结束时间", "text", "如 2025-06-01"],
+    ["activityStart", "开始时间", "date"],
+    ["activityEnd", "结束时间", "date"],
     ["activityDesc", "活动描述", "textarea"]
   ];
   var PROJECT_ITEM_FORM = [
     ["projectName", "项目名称", "text"],
     ["projectRole", "项目职务", "text"],
-    ["projectStart", "开始时间", "text", "如 2026-03-01"],
-    ["projectEnd", "结束时间", "text", "如 2026-06-01"],
+    ["projectStart", "开始时间", "date"],
+    ["projectEnd", "结束时间", "date"],
     ["projectDesc", "项目描述", "textarea"]
   ];
   var FAMILY_ITEM_FORM = [
@@ -950,6 +951,186 @@
     }
   }
 
+  // src/core/address.js
+  var PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
+  var CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;
+  var AREA_RE = /^(.{1,12}?(?:自治县|自治旗|区|县|旗|市))/;
+  function splitAddress(value) {
+    let rest = String(value == null ? "" : value).trim();
+    const out = { province: "", city: "", district: "", detail: "" };
+    const m1 = rest.match(PROVINCE_RE);
+    if (m1) {
+      out.province = m1[1];
+      rest = rest.slice(out.province.length).trim();
+    }
+    const m2 = rest.match(CITY_RE);
+    if (m2) {
+      out.city = m2[1];
+      rest = rest.slice(out.city.length).trim();
+    }
+    const m3 = rest.match(AREA_RE);
+    if (m3) {
+      out.district = m3[1];
+      rest = rest.slice(out.district.length).trim();
+    }
+    out.detail = rest;
+    return out;
+  }
+  function addressRole(el2) {
+    const label = norm(labelText(el2));
+    const attr = norm(String(el2.getAttribute("name") || "") + String(el2.getAttribute("id") || "") + String(el2.getAttribute("placeholder") || ""));
+    if (/province|sheng/.test(attr)) return "province";
+    if (/city|shi/.test(attr)) return "city";
+    if (/district|area|county|qu|area/.test(attr)) return "district";
+    if (/^省$|省份|所在省|请选择省/.test(label)) return "province";
+    if (/^市$|所在市|请选择市/.test(label)) return "city";
+    if (/^区$|^县$|区县|所在区|请选择区|请选择县/.test(label)) return "district";
+    return "";
+  }
+  function usable(node) {
+    if (!node || !node.tagName) return false;
+    if (node.disabled || node.readOnly) return false;
+    if ((node.type || "").toLowerCase() === "hidden") return false;
+    return !isOurUI(node);
+  }
+  function addressSegmentGroup(el2) {
+    const row = rowContainer(el2);
+    if (!row || !row.querySelectorAll) return null;
+    const nodes = [];
+    const inside = row.querySelectorAll("input, select");
+    for (let i = 0; i < inside.length; i += 1) {
+      if (usable(inside[i])) nodes.push(inside[i]);
+    }
+    if (nodes.length < 2 || nodes.length > 3) return null;
+    const roles = nodes.map((node) => addressRole(node));
+    const taken = {};
+    for (let i = 0; i < roles.length; i += 1) {
+      if (roles[i] && !taken[roles[i]]) taken[roles[i]] = 1;
+      else roles[i] = "";
+    }
+    const fallback = nodes.length === 3 ? ["province", "city", "district"] : ["province", "city"];
+    for (let i = 0; i < roles.length; i += 1) {
+      if (roles[i]) continue;
+      const pick = fallback.filter((r) => !taken[r])[0];
+      if (!pick) return null;
+      roles[i] = pick;
+      taken[pick] = 1;
+    }
+    if (!taken.province || !taken.city) return null;
+    return { row, nodes, roles };
+  }
+  async function bestOptionWithWait(select, want, tries) {
+    const rounds = tries || 4;
+    for (let i = 0; i < rounds; i += 1) {
+      const idx = bestOptionIndex(select, want, false);
+      if (idx >= 0) return idx;
+      await sleep(200);
+    }
+    return -1;
+  }
+  async function fillAddressSegment(group, address) {
+    let written = 0;
+    let blocked = 0;
+    for (let i = 0; i < group.nodes.length; i += 1) {
+      const node = group.nodes[i];
+      const want = address[group.roles[i]];
+      if (!want) continue;
+      if (node.tagName === "SELECT") {
+        const idx = await bestOptionWithWait(node, want);
+        if (idx < 0) {
+          blocked += 1;
+          continue;
+        }
+        setVal(node, node.options[idx].value);
+      } else {
+        setVal(node, want);
+      }
+      written += 1;
+      await sleep(150);
+    }
+    return { written, blocked };
+  }
+
+  // src/core/search-select.js
+  var OPTION_SELECTOR = '[role="option"], .dropdown-menu li a, .dropdown-menu li, .ant-select-item-option, .el-select-dropdown__item, .bs-searchbox ~ .dropdown-menu li a';
+  function isSearchSelect(el2) {
+    if (!el2 || el2.tagName !== "SELECT") return false;
+    if (String(el2.getAttribute("data-live-search")) === "true") return true;
+    return !!(el2.closest && el2.closest(".bootstrap-select"));
+  }
+  function clickNode(node) {
+    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }
+  function optionsIn(wrap) {
+    const list = deepQueryAll(OPTION_SELECTOR);
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      if (isOurUI(node)) continue;
+      if (wrap && !wrap.contains(node)) continue;
+      if (!visible(node)) continue;
+      out.push(node);
+    }
+    return out;
+  }
+  function pickOption(list, want) {
+    const w = norm(want);
+    const hits = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      const text = norm(node.textContent);
+      if (!text || text === "请选择") continue;
+      if (String(node.className || "").indexOf("no-results") >= 0) continue;
+      let score = 0;
+      if (text === w) score = 100;
+      else if (text.indexOf(w) >= 0) score = 60;
+      else if (w.indexOf(text) >= 0) score = 40;
+      if (score) hits.push({ node, score });
+    }
+    if (!hits.length) return null;
+    let bestScore = 0;
+    for (let i = 0; i < hits.length; i += 1) bestScore = Math.max(bestScore, hits[i].score);
+    const top = hits.filter((h) => h.score === bestScore).map((h) => h.node);
+    for (let i = 0; i < top.length; i += 1) {
+      const node = top[i];
+      if (!top.some((other) => other !== node && node.contains(other))) return node;
+    }
+    return top[0];
+  }
+  async function fillSearchSelect(el2, value) {
+    const want = String(value == null ? "" : value).trim();
+    if (!want) return false;
+    const wrap = el2.closest && el2.closest(".bootstrap-select") || el2.parentElement;
+    const toggle = wrap && wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
+    if (toggle) clickNode(toggle);
+    else {
+      try {
+        el2.focus();
+      } catch (e) {
+      }
+    }
+    await sleep(220);
+    const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
+    if (box) {
+      setVal(box, want);
+      await sleep(280);
+    }
+    const list = optionsIn(wrap);
+    const hit = pickOption(list, want);
+    if (!hit) {
+      if (toggle) clickNode(toggle);
+      return false;
+    }
+    clickNode(hit);
+    for (let i = 0; i < 8; i += 1) {
+      await sleep(80);
+      if (el2.tagName === "SELECT" && String(el2.value || "").trim()) return true;
+    }
+    return el2.tagName !== "SELECT";
+  }
+
   // src/core/date-widget.js
   var PICKER_CLASS_RE = /ant-picker|ant-calendar-picker|el-date-editor|ivu-date-picker|arco-picker|n-date-picker|van-calendar|flatpickr|react-datepicker|vdp-datepicker|datepicker|date-picker/i;
   var PANEL_SELECTOR = '.ant-picker-dropdown, .el-picker-panel, .ivu-picker-panel, .arco-picker-container, .n-date-panel, .flatpickr-calendar, .react-datepicker, [class*="picker-panel"], [class*="datepicker"], [class*="date-picker"]';
@@ -973,7 +1154,7 @@
     const list = deepQueryAll(PANEL_SELECTOR).filter(panelVisible);
     return list.length ? list[list.length - 1] : null;
   }
-  function clickNode(node) {
+  function clickNode2(node) {
     node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     node.click();
@@ -1004,7 +1185,7 @@
       hits.push(cell);
     }
     if (!hits.length) return false;
-    clickNode(innermost(hits));
+    clickNode2(innermost(hits));
     return true;
   }
   function openYearView(panel) {
@@ -1016,7 +1197,7 @@
         if (/^\d{4}\s*年?$/.test(String(parts[j].textContent || "").trim())) hits.push(parts[j]);
       }
       if (hits.length) {
-        clickNode(innermost(hits));
+        clickNode2(innermost(hits));
         return true;
       }
     }
@@ -1027,7 +1208,7 @@
     for (let i = 0; i < list.length; i += 1) {
       const cls = String(list[i].className || "");
       if (/next|super-next/.test(cls)) continue;
-      clickNode(list[i]);
+      clickNode2(list[i]);
       return true;
     }
     return false;
@@ -1037,7 +1218,7 @@
     for (let i = 0; i < list.length; i += 1) {
       const cls = String(list[i].className || "");
       if (/prev/.test(cls) && !/next/.test(cls)) continue;
-      clickNode(list[i]);
+      clickNode2(list[i]);
       return true;
     }
     return false;
@@ -1106,7 +1287,7 @@
     if (/[日号]$/.test(label)) return "day";
     return "";
   }
-  function usable(node) {
+  function usable2(node) {
     if (!node || !node.tagName) return false;
     if (node.disabled || node.readOnly) return false;
     if ((node.type || "").toLowerCase() === "hidden") return false;
@@ -1118,7 +1299,7 @@
     const nodes = [];
     const inside = row.querySelectorAll("input, select");
     for (let i = 0; i < inside.length; i += 1) {
-      if (usable(inside[i])) nodes.push(inside[i]);
+      if (usable2(inside[i])) nodes.push(inside[i]);
     }
     if (nodes.length < 2 || nodes.length > 3) return null;
     const fallback = nodes.length === 3 ? ["year", "month", "day"] : ["year", "month"];
@@ -1218,7 +1399,13 @@
   }
 
   // src/core/filler.js
-  var START_OF_END = { eduEnd: "eduStart", workEnd: "workStart" };
+  var PREREQUISITE = {
+    eduEnd: "eduStart",
+    workEnd: "workStart",
+    projectEnd: "projectStart",
+    activityEnd: "activityStart",
+    idCard: "idType"
+  };
   function describe(el2, key) {
     const lb = labelText(el2) || el2.getAttribute && el2.getAttribute("placeholder") || key || "";
     return String(lb).replace(/\s+/g, " ").trim().slice(0, 40);
@@ -1258,15 +1445,31 @@
         st.count += 1;
         st.filled.push(name + " → " + text);
         if (options.highlight) highlight(el2);
-      } else if (isCustomSelect(el2)) {
+        return;
+      }
+      if (isSearchSelect(el2)) {
+        const ok = await fillSearchSelect(el2, value);
+        if (ok) {
+          st.count += 1;
+          st.filled.push(name);
+          if (options.highlight) highlight(el2);
+        } else {
+          st.manual.push(name + "：可搜索下拉里没有匹配项，请手动选");
+        }
+        return;
+      }
+      if (isCustomSelect(el2)) {
         const ok = await fillCustomSelect(el2, value);
         if (ok) {
           st.count += 1;
           st.filled.push(name);
-        } else st.manual.push(name + "：下拉框没有合适选项，请手动选");
-      } else {
-        st.manual.push(name + "：下拉框没有合适选项，请手动选");
+          if (options.highlight) highlight(el2);
+        } else {
+          st.manual.push(name + "：下拉框没有合适选项，请手动选");
+        }
+        return;
       }
+      st.manual.push(name + "：下拉框没有合适选项，请手动选");
       return;
     }
     if (options.fillDatePickers && isDatePicker(el2)) {
@@ -1306,7 +1509,7 @@
     if (options.highlight) highlight(el2);
   }
   function pairedStart(el2, key) {
-    const startKey = START_OF_END[key];
+    const startKey = PREREQUISITE[key];
     if (!startKey) return null;
     const scope = rowContainer(el2) || sectionContainer(el2);
     if (!scope || !scope.querySelectorAll) return null;
@@ -1349,6 +1552,27 @@
       if (!row) return null;
       if (!segments.has(row)) segments.set(row, dateSegmentGroup(el2));
       return segments.get(row);
+    };
+    const addressGroups = /* @__PURE__ */ new Map();
+    const addressGroupOf = (el2) => {
+      const row = rowContainer(el2);
+      if (!row) return null;
+      if (!addressGroups.has(row)) addressGroups.set(row, addressSegmentGroup(el2));
+      return addressGroups.get(row);
+    };
+    const fillAddressGroup = async (group, key) => {
+      const name = FIELD_NAMES[key] || key;
+      const address = splitAddress(valueForField(key, profile, 1));
+      if (!address.province && !address.city) return false;
+      const res = await fillAddressSegment(group, address);
+      group.nodes.forEach((n) => handled.add(n));
+      if (res.written) {
+        st.count += res.written;
+        st.filled.push(name + "（省 / 市 / 区分开填写）");
+        if (options.highlight) group.nodes.forEach((n) => highlight(n));
+      }
+      if (res.blocked) st.manual.push(name + "：省 / 市 / 区控件没有能选中的值，请手动选");
+      return res.written > 0 || res.blocked > 0;
     };
     const fillSegment = (el2, group, rowText) => {
       const rowKey = pickKey({
@@ -1460,6 +1684,23 @@
       if (!key) {
         const group = segmentOf(el2);
         if (group && fillSegment(el2, group, rowText)) continue;
+      }
+      if (ADDRESS_KEYS[key]) {
+        const addrGroup = addressGroupOf(el2);
+        if (addrGroup && await fillAddressGroup(addrGroup, key)) continue;
+      }
+      if (!key) {
+        const addrGroup = addressGroupOf(el2);
+        if (addrGroup) {
+          const rowKey = pickKey({
+            label: rowText,
+            attr: "",
+            block,
+            hint: fieldHint(el2),
+            allowHint: true
+          });
+          if (rowKey && ADDRESS_KEYS[rowKey] && await fillAddressGroup(addrGroup, rowKey)) continue;
+        }
       }
       if (!key) {
         if (visible(el2) && !alreadyFilled(el2)) {
@@ -1629,6 +1870,45 @@
     };
   }
 
+  // src/core/regions.js
+  var REGIONS = {
+    "86": { "110000": "北京市", "120000": "天津市", "130000": "河北省", "140000": "山西省", "150000": "内蒙古自治区", "210000": "辽宁省", "220000": "吉林省", "230000": "黑龙江省", "310000": "上海市", "320000": "江苏省", "330000": "浙江省", "340000": "安徽省", "350000": "福建省", "360000": "江西省", "370000": "山东省", "410000": "河南省", "420000": "湖北省", "430000": "湖南省", "440000": "广东省", "450000": "广西壮族自治区", "460000": "海南省", "500000": "重庆市", "510000": "四川省", "520000": "贵州省", "530000": "云南省", "540000": "西藏自治区", "610000": "陕西省", "620000": "甘肃省", "630000": "青海省", "640000": "宁夏回族自治区", "650000": "新疆维吾尔自治区", "710000": "台湾省", "810000": "香港特别行政区", "820000": "澳门特别行政区" },
+    "110000": { "110101": "东城区", "110102": "西城区", "110105": "朝阳区", "110106": "丰台区", "110107": "石景山区", "110108": "海淀区", "110109": "门头沟区", "110111": "房山区", "110112": "通州区", "110113": "顺义区", "110114": "昌平区", "110115": "大兴区", "110116": "怀柔区", "110117": "平谷区", "110118": "密云区", "110119": "延庆区" },
+    "120000": { "120101": "和平区", "120102": "河东区", "120103": "河西区", "120104": "南开区", "120105": "河北区", "120106": "红桥区", "120110": "东丽区", "120111": "西青区", "120112": "津南区", "120113": "北辰区", "120114": "武清区", "120115": "宝坻区", "120116": "滨海新区", "120117": "宁河区", "120118": "静海区", "120119": "蓟州区" },
+    "130000": { "130100": "石家庄市", "130200": "唐山市", "130300": "秦皇岛市", "130400": "邯郸市", "130500": "邢台市", "130600": "保定市", "130700": "张家口市", "130800": "承德市", "130900": "沧州市", "131000": "廊坊市", "131100": "衡水市", "139001": "定州市", "139002": "辛集市" },
+    "140000": { "140100": "太原市", "140200": "大同市", "140300": "阳泉市", "140400": "长治市", "140500": "晋城市", "140600": "朔州市", "140700": "晋中市", "140800": "运城市", "140900": "忻州市", "141000": "临汾市", "141100": "吕梁市" },
+    "150000": { "150100": "呼和浩特市", "150200": "包头市", "150300": "乌海市", "150400": "赤峰市", "150500": "通辽市", "150600": "鄂尔多斯市", "150700": "呼伦贝尔市", "150800": "巴彦淖尔市", "150900": "乌兰察布市", "152200": "兴安盟", "152500": "锡林郭勒盟", "152900": "阿拉善盟" },
+    "210000": { "210100": "沈阳市", "210200": "大连市", "210300": "鞍山市", "210400": "抚顺市", "210500": "本溪市", "210600": "丹东市", "210700": "锦州市", "210800": "营口市", "210900": "阜新市", "211000": "辽阳市", "211100": "盘锦市", "211200": "铁岭市", "211300": "朝阳市", "211400": "葫芦岛市" },
+    "220000": { "220100": "长春市", "220200": "吉林市", "220300": "四平市", "220400": "辽源市", "220500": "通化市", "220600": "白山市", "220700": "松原市", "220800": "白城市", "222400": "延边朝鲜族自治州" },
+    "230000": { "230100": "哈尔滨市", "230200": "齐齐哈尔市", "230300": "鸡西市", "230400": "鹤岗市", "230500": "双鸭山市", "230600": "大庆市", "230700": "伊春市", "230800": "佳木斯市", "230900": "七台河市", "231000": "牡丹江市", "231100": "黑河市", "231200": "绥化市", "232700": "大兴安岭地区" },
+    "310000": { "310101": "黄浦区", "310104": "徐汇区", "310105": "长宁区", "310106": "静安区", "310107": "普陀区", "310109": "虹口区", "310110": "杨浦区", "310112": "闵行区", "310113": "宝山区", "310114": "嘉定区", "310115": "浦东新区", "310116": "金山区", "310117": "松江区", "310118": "青浦区", "310120": "奉贤区", "310151": "崇明区" },
+    "320000": { "320100": "南京市", "320200": "无锡市", "320300": "徐州市", "320400": "常州市", "320500": "苏州市", "320600": "南通市", "320700": "连云港市", "320800": "淮安市", "320900": "盐城市", "321000": "扬州市", "321100": "镇江市", "321200": "泰州市", "321300": "宿迁市" },
+    "330000": { "330100": "杭州市", "330200": "宁波市", "330300": "温州市", "330400": "嘉兴市", "330500": "湖州市", "330600": "绍兴市", "330700": "金华市", "330800": "衢州市", "330900": "舟山市", "331000": "台州市", "331100": "丽水市" },
+    "340000": { "340100": "合肥市", "340200": "芜湖市", "340300": "蚌埠市", "340400": "淮南市", "340500": "马鞍山市", "340600": "淮北市", "340700": "铜陵市", "340800": "安庆市", "341000": "黄山市", "341100": "滁州市", "341200": "阜阳市", "341300": "宿州市", "341500": "六安市", "341600": "亳州市", "341700": "池州市", "341800": "宣城市" },
+    "350000": { "350100": "福州市", "350200": "厦门市", "350300": "莆田市", "350400": "三明市", "350500": "泉州市", "350600": "漳州市", "350700": "南平市", "350800": "龙岩市", "350900": "宁德市" },
+    "360000": { "360100": "南昌市", "360200": "景德镇市", "360300": "萍乡市", "360400": "九江市", "360500": "新余市", "360600": "鹰潭市", "360700": "赣州市", "360800": "吉安市", "360900": "宜春市", "361000": "抚州市", "361100": "上饶市" },
+    "370000": { "370100": "济南市", "370200": "青岛市", "370300": "淄博市", "370400": "枣庄市", "370500": "东营市", "370600": "烟台市", "370700": "潍坊市", "370800": "济宁市", "370900": "泰安市", "371000": "威海市", "371100": "日照市", "371200": "莱芜市", "371300": "临沂市", "371400": "德州市", "371500": "聊城市", "371600": "滨州市", "371700": "菏泽市" },
+    "410000": { "410100": "郑州市", "410200": "开封市", "410300": "洛阳市", "410400": "平顶山市", "410500": "安阳市", "410600": "鹤壁市", "410700": "新乡市", "410800": "焦作市", "410900": "濮阳市", "411000": "许昌市", "411100": "漯河市", "411200": "三门峡市", "411300": "南阳市", "411400": "商丘市", "411500": "信阳市", "411600": "周口市", "411700": "驻马店市", "419001": "济源市" },
+    "420000": { "420100": "武汉市", "420200": "黄石市", "420300": "十堰市", "420500": "宜昌市", "420600": "襄阳市", "420700": "鄂州市", "420800": "荆门市", "420900": "孝感市", "421000": "荆州市", "421100": "黄冈市", "421200": "咸宁市", "421300": "随州市", "422800": "恩施土家族苗族自治州", "429004": "仙桃市", "429005": "潜江市", "429006": "天门市", "429021": "神农架林区" },
+    "430000": { "430100": "长沙市", "430200": "株洲市", "430300": "湘潭市", "430400": "衡阳市", "430500": "邵阳市", "430600": "岳阳市", "430700": "常德市", "430800": "张家界市", "430900": "益阳市", "431000": "郴州市", "431100": "永州市", "431200": "怀化市", "431300": "娄底市", "433100": "湘西土家族苗族自治州" },
+    "440000": { "440100": "广州市", "440200": "韶关市", "440300": "深圳市", "440400": "珠海市", "440500": "汕头市", "440600": "佛山市", "440700": "江门市", "440800": "湛江市", "440900": "茂名市", "441200": "肇庆市", "441300": "惠州市", "441400": "梅州市", "441500": "汕尾市", "441600": "河源市", "441700": "阳江市", "441800": "清远市", "441900": "东莞市", "442000": "中山市", "445100": "潮州市", "445200": "揭阳市", "445300": "云浮市" },
+    "450000": { "450100": "南宁市", "450200": "柳州市", "450300": "桂林市", "450400": "梧州市", "450500": "北海市", "450600": "防城港市", "450700": "钦州市", "450800": "贵港市", "450900": "玉林市", "451000": "百色市", "451100": "贺州市", "451200": "河池市", "451300": "来宾市", "451400": "崇左市" },
+    "460000": { "460100": "海口市", "460200": "三亚市", "460300": "三沙市", "460400": "儋州市", "469001": "五指山市", "469002": "琼海市", "469005": "文昌市", "469006": "万宁市", "469007": "东方市", "469021": "定安县", "469022": "屯昌县", "469023": "澄迈县", "469024": "临高县", "469025": "白沙黎族自治县", "469026": "昌江黎族自治县", "469027": "乐东黎族自治县", "469028": "陵水黎族自治县", "469029": "保亭黎族苗族自治县", "469030": "琼中黎族苗族自治县" },
+    "500000": { "500101": "万州区", "500102": "涪陵区", "500103": "渝中区", "500104": "大渡口区", "500105": "江北区", "500106": "沙坪坝区", "500107": "九龙坡区", "500108": "南岸区", "500109": "北碚区", "500110": "綦江区", "500111": "大足区", "500112": "渝北区", "500113": "巴南区", "500114": "黔江区", "500115": "长寿区", "500116": "江津区", "500117": "合川区", "500118": "永川区", "500119": "南川区", "500120": "璧山区", "500151": "铜梁区", "500152": "潼南区", "500153": "荣昌区", "500154": "开州区", "500228": "梁平县", "500229": "城口县", "500230": "丰都县", "500231": "垫江县", "500232": "武隆县", "500233": "忠县", "500235": "云阳县", "500236": "奉节县", "500237": "巫山县", "500238": "巫溪县", "500240": "石柱土家族自治县", "500241": "秀山土家族苗族自治县", "500242": "酉阳土家族苗族自治县", "500243": "彭水苗族土家族自治县" },
+    "510000": { "510100": "成都市", "510300": "自贡市", "510400": "攀枝花市", "510500": "泸州市", "510600": "德阳市", "510700": "绵阳市", "510800": "广元市", "510900": "遂宁市", "511000": "内江市", "511100": "乐山市", "511300": "南充市", "511400": "眉山市", "511500": "宜宾市", "511600": "广安市", "511700": "达州市", "511800": "雅安市", "511900": "巴中市", "512000": "资阳市", "513200": "阿坝藏族羌族自治州", "513300": "甘孜藏族自治州", "513400": "凉山彝族自治州" },
+    "520000": { "520100": "贵阳市", "520200": "六盘水市", "520300": "遵义市", "520400": "安顺市", "520500": "毕节市", "520600": "铜仁市", "522300": "黔西南布依族苗族自治州", "522600": "黔东南苗族侗族自治州", "522700": "黔南布依族苗族自治州" },
+    "530000": { "530100": "昆明市", "530300": "曲靖市", "530400": "玉溪市", "530500": "保山市", "530600": "昭通市", "530700": "丽江市", "530800": "普洱市", "530900": "临沧市", "532300": "楚雄彝族自治州", "532500": "红河哈尼族彝族自治州", "532600": "文山壮族苗族自治州", "532800": "西双版纳傣族自治州", "532900": "大理白族自治州", "533100": "德宏傣族景颇族自治州", "533300": "怒江傈僳族自治州", "533400": "迪庆藏族自治州" },
+    "540000": { "540100": "拉萨市", "540200": "日喀则市", "540300": "昌都市", "540400": "林芝市", "540500": "山南市", "542400": "那曲地区", "542500": "阿里地区" },
+    "610000": { "610100": "西安市", "610200": "铜川市", "610300": "宝鸡市", "610400": "咸阳市", "610500": "渭南市", "610600": "延安市", "610700": "汉中市", "610800": "榆林市", "610900": "安康市", "611000": "商洛市" },
+    "620000": { "620100": "兰州市", "620200": "嘉峪关市", "620300": "金昌市", "620400": "白银市", "620500": "天水市", "620600": "武威市", "620700": "张掖市", "620800": "平凉市", "620900": "酒泉市", "621000": "庆阳市", "621100": "定西市", "621200": "陇南市", "622900": "临夏回族自治州", "623000": "甘南藏族自治州" },
+    "630000": { "630100": "西宁市", "630200": "海东市", "632200": "海北藏族自治州", "632300": "黄南藏族自治州", "632500": "海南藏族自治州", "632600": "果洛藏族自治州", "632700": "玉树藏族自治州", "632800": "海西蒙古族藏族自治州" },
+    "640000": { "640100": "银川市", "640200": "石嘴山市", "640300": "吴忠市", "640400": "固原市", "640500": "中卫市" },
+    "650000": { "650100": "乌鲁木齐市", "650200": "克拉玛依市", "650400": "吐鲁番市", "650500": "哈密市", "652300": "昌吉回族自治州", "652700": "博尔塔拉蒙古自治州", "652800": "巴音郭楞蒙古自治州", "652900": "阿克苏地区", "653000": "克孜勒苏柯尔克孜自治州", "653100": "喀什地区", "653200": "和田地区", "654000": "伊犁哈萨克自治州", "654200": "塔城地区", "654300": "阿勒泰地区", "659001": "石河子市", "659002": "阿拉尔市", "659003": "图木舒克市", "659004": "五家渠市", "659006": "铁门关市" },
+    "710000": { "710101": "金门", "710102": "连江", "710103": "苗栗", "710104": "南投", "710105": "澎湖", "710106": "屏东", "710107": "台东", "710108": "台中", "710109": "台南", "710110": "台北", "710111": "桃园", "710112": "云林", "710113": "新北", "710114": "彰化", "710115": "嘉义", "710116": "新竹", "710117": "花莲", "710118": "宜兰", "710119": "高雄", "710120": "基隆" },
+    "810000": { "810101": "中西区", "810102": "东区", "810103": "九龙城区", "810104": "观塘区", "810105": "深水埗区", "810106": "湾仔区", "810107": "黄大仙区", "810108": "油尖旺区", "810109": "离岛区", "810110": "葵青区", "810111": "北区", "810112": "西贡区", "810113": "沙田区", "810114": "屯门区", "810115": "大埔区", "810116": "荃湾区", "810117": "元朗区", "810118": "香港", "810119": "九龙", "810120": "新界" },
+    "820000": { "820101": "离岛", "820102": "澳门半岛", "820103": "凼仔", "820104": "路凼城", "820105": "路环" }
+  };
+
   // src/ui/panel.js
   var CSS2 = [
     '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}',
@@ -1664,6 +1944,8 @@
     ".x{border:0;background:#fee2e2;color:#b91c1c;border-radius:6px;cursor:pointer;font-size:15px}",
     ".hidden{display:none}",
     ".block{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:10px;background:#f8fafc}",
+    ".region{display:flex;gap:6px;flex-wrap:wrap}",
+    ".region select,.region input{flex:1 1 90px;min-width:80px;border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:13px;background:#fff;color:#0f172a}",
     ".block-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:#64748b;font-weight:600}"
   ].join("");
   var FORM_GROUPS = [
@@ -1671,7 +1953,7 @@
       ["name", "姓名", "text"],
       ["englishName", "英文名/拼音", "text"],
       ["gender", "性别", "select", ["", "男", "女"]],
-      ["birthday", "出生日期", "text", "如 2003-09-01"],
+      ["birthday", "出生日期", "date"],
       ["nation", "民族", "text"],
       ["politicalStatus", "政治面貌", "select", ["", "中共党员", "中共预备党员", "共青团员", "民主党派", "群众"]],
       ["maritalStatus", "婚姻状况", "select", ["", "未婚", "已婚", "离异"]],
@@ -1680,21 +1962,21 @@
       ["phone", "手机号", "text"],
       ["email", "邮箱", "text"],
       ["wechat", "微信号", "text"],
-      ["hometown", "籍贯", "text"],
-      ["hukou", "户口所在地", "text"],
+      ["hometown", "籍贯", "region"],
+      ["hukou", "户口所在地", "region"],
       ["hukouType", "户口类型", "text", "如 家庭户口 / 学校集体户口"],
-      ["currentCity", "现居城市", "text"],
+      ["currentCity", "现居城市", "region"],
       ["zipcode", "邮编", "text"],
       ["address", "详细地址", "text"],
       ["health", "健康状况", "select", ["", "健康", "良好", "有病史"]],
-      ["gaokaoOrigin", "高考生源地", "text", "如 浙江省"],
+      ["gaokaoOrigin", "高考生源地", "region"],
       ["isFreshGraduate", "是否应届毕业生", "select", ["", "是", "否"]]
     ]],
     ["求职意向", [
       ["applyPosition", "意向岗位", "text"],
       ["expectCity", "意向城市", "text"],
       ["expectSalary", "期望薪资", "text"],
-      ["availableDate", "到岗时间", "text", "如 2027-07-01 / 一周内"],
+      ["availableDate", "到岗时间", "date"],
       ["jobType", "期望工作性质", "select", ["", "全职", "兼职", "实习"]],
       ["adjust", "是否服从调剂", "select", ["", "是", "否"]],
       ["source", "获知渠道", "text", "如 公司官网"],
@@ -1736,6 +2018,96 @@
   var stopWatch = null;
   function initPanel(initialData) {
     data = initialData;
+  }
+  function regionPicker(value, setValue) {
+    const parsed = splitAddress(value);
+    const box = el("div", "region");
+    const makeSelect = (placeholder) => {
+      const s = el("select");
+      const empty = el("option", null, placeholder);
+      empty.value = "";
+      s.appendChild(empty);
+      return s;
+    };
+    const provSel = makeSelect("省");
+    const citySel = makeSelect("市");
+    const areaSel = makeSelect("区 / 县");
+    const detail = el("input");
+    detail.type = "text";
+    detail.placeholder = "详细地址（可选）";
+    detail.value = parsed.detail || "";
+    const codeOf = (map, name) => Object.keys(map).find((code) => map[code] === name) || "";
+    const fillSelect = (sel, map, placeholder, current) => {
+      sel.innerHTML = "";
+      const empty = el("option", null, placeholder);
+      empty.value = "";
+      sel.appendChild(empty);
+      Object.keys(map).forEach((code) => {
+        const option = el("option", null, map[code]);
+        option.value = code;
+        sel.appendChild(option);
+      });
+      sel.value = codeOf(map, current) || "";
+    };
+    const emit = () => {
+      const province = provSel.value ? REGIONS["86"][provSel.value] : "";
+      const city = citySel.value ? (REGIONS[provSel.value] || {})[citySel.value] || "" : "";
+      const district = areaSel.value ? (REGIONS[citySel.value] || {})[areaSel.value] || "" : "";
+      setValue([province, city, district].join("") + detail.value.trim());
+    };
+    const provinces = REGIONS["86"] || {};
+    fillSelect(provSel, provinces, "省", parsed.province);
+    fillSelect(citySel, REGIONS[provSel.value] || {}, "市", parsed.city);
+    fillSelect(areaSel, REGIONS[citySel.value] || {}, "区 / 县", parsed.district);
+    provSel.onchange = () => {
+      fillSelect(citySel, REGIONS[provSel.value] || {}, "市", "");
+      fillSelect(areaSel, REGIONS[citySel.value] || {}, "区 / 县", "");
+      emit();
+    };
+    citySel.onchange = () => {
+      fillSelect(areaSel, REGIONS[citySel.value] || {}, "区 / 县", "");
+      emit();
+    };
+    areaSel.onchange = emit;
+    detail.oninput = emit;
+    box.appendChild(provSel);
+    box.appendChild(citySel);
+    box.appendChild(areaSel);
+    box.appendChild(detail);
+    return box;
+  }
+  function makeFieldControl(type, extra, value, setValue) {
+    if (type === "region") return regionPicker(value, setValue);
+    if (type === "select") {
+      const inp2 = el("select");
+      (extra || [""]).forEach((o) => {
+        const op = el("option", null, o === "" ? "（不填）" : o);
+        op.value = o;
+        inp2.appendChild(op);
+      });
+      inp2.value = value == null ? "" : String(value);
+      inp2.onchange = () => setValue(inp2.value);
+      return inp2;
+    }
+    if (type === "textarea") {
+      const inp2 = el("textarea");
+      inp2.value = value == null ? "" : String(value);
+      inp2.oninput = () => setValue(inp2.value);
+      return inp2;
+    }
+    if (type === "date") {
+      const inp2 = el("input");
+      inp2.type = "date";
+      inp2.value = value == null ? "" : String(value);
+      inp2.oninput = () => setValue(inp2.value);
+      return inp2;
+    }
+    const inp = el("input");
+    inp.type = "text";
+    if (extra) inp.placeholder = extra;
+    inp.value = value == null ? "" : String(value);
+    inp.oninput = () => setValue(inp.value);
+    return inp;
   }
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -1964,36 +2336,11 @@
         const label = f[1];
         const type = f[2];
         const extra = f[3];
-        const wrap = el("div", "f" + (type === "textarea" ? " wide" : ""));
+        const wrap = el("div", "f" + (type === "textarea" || type === "region" ? " wide" : ""));
         wrap.appendChild(el("label", null, label));
-        let inp;
-        if (type === "select") {
-          inp = el("select");
-          (extra || [""]).forEach((o) => {
-            const op = el("option", null, o === "" ? "（不填）" : o);
-            op.value = o;
-            inp.appendChild(op);
-          });
-          inp.value = draft[key] == null ? "" : String(draft[key]);
-          inp.onchange = () => {
-            draft[key] = inp.value;
-          };
-        } else if (type === "textarea") {
-          inp = el("textarea");
-          inp.value = draft[key] == null ? "" : String(draft[key]);
-          inp.oninput = () => {
-            draft[key] = inp.value;
-          };
-        } else {
-          inp = el("input");
-          inp.type = "text";
-          if (extra) inp.placeholder = extra;
-          inp.value = draft[key] == null ? "" : String(draft[key]);
-          inp.oninput = () => {
-            draft[key] = inp.value;
-          };
-        }
-        wrap.appendChild(inp);
+        wrap.appendChild(makeFieldControl(type, extra, draft[key], (v) => {
+          draft[key] = v;
+        }));
         grid.appendChild(wrap);
       });
       bd.appendChild(grid);
@@ -2095,34 +2442,9 @@
         const extra = f[3];
         const wrap = el("div", "f" + (type === "textarea" ? " wide" : ""));
         wrap.appendChild(el("label", null, label));
-        let inp;
-        if (type === "select") {
-          inp = el("select");
-          (extra || [""]).forEach((o) => {
-            const op = el("option", null, o === "" ? "（不填）" : o);
-            op.value = o;
-            inp.appendChild(op);
-          });
-          inp.value = item[field] == null ? "" : String(item[field]);
-          inp.onchange = () => {
-            item[field] = inp.value;
-          };
-        } else if (type === "textarea") {
-          inp = el("textarea");
-          inp.value = item[field] == null ? "" : String(item[field]);
-          inp.oninput = () => {
-            item[field] = inp.value;
-          };
-        } else {
-          inp = el("input");
-          inp.type = "text";
-          if (extra) inp.placeholder = extra;
-          inp.value = item[field] == null ? "" : String(item[field]);
-          inp.oninput = () => {
-            item[field] = inp.value;
-          };
-        }
-        wrap.appendChild(inp);
+        wrap.appendChild(makeFieldControl(type, extra, item[field], (v) => {
+          item[field] = v;
+        }));
         grid.appendChild(wrap);
       });
       block.appendChild(grid);

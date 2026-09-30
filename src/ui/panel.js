@@ -10,6 +10,8 @@ import {
   PAPER_ITEM_FORM, AWARD_ITEM_FORM, FAMILY_ITEM_FORM, ACTIVITY_ITEM_FORM, PROJECT_ITEM_FORM,
 } from '../core/profile-schema.js';
 import { GROUP_ARRAYS } from '../core/value.js';
+import { REGIONS } from '../core/regions.js';
+import { splitAddress } from '../core/address.js';
 import { RUN_MSG, RES_MSG, FRAME_ID, relayToChildren } from '../core/messaging.js';
 
 const CSS = [
@@ -46,6 +48,8 @@ const CSS = [
   '.x{border:0;background:#fee2e2;color:#b91c1c;border-radius:6px;cursor:pointer;font-size:15px}',
   '.hidden{display:none}',
   '.block{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:10px;background:#f8fafc}',
+  '.region{display:flex;gap:6px;flex-wrap:wrap}',
+  '.region select,.region input{flex:1 1 90px;min-width:80px;border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:13px;background:#fff;color:#0f172a}',
   '.block-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:#64748b;font-weight:600}',
 ].join('');
 
@@ -54,7 +58,7 @@ const FORM_GROUPS = [
     ['name', '姓名', 'text'],
     ['englishName', '英文名/拼音', 'text'],
     ['gender', '性别', 'select', ['', '男', '女']],
-    ['birthday', '出生日期', 'text', '如 2003-09-01'],
+    ['birthday', '出生日期', 'date'],
     ['nation', '民族', 'text'],
     ['politicalStatus', '政治面貌', 'select', ['', '中共党员', '中共预备党员', '共青团员', '民主党派', '群众']],
     ['maritalStatus', '婚姻状况', 'select', ['', '未婚', '已婚', '离异']],
@@ -63,21 +67,21 @@ const FORM_GROUPS = [
     ['phone', '手机号', 'text'],
     ['email', '邮箱', 'text'],
     ['wechat', '微信号', 'text'],
-    ['hometown', '籍贯', 'text'],
-    ['hukou', '户口所在地', 'text'],
+    ['hometown', '籍贯', 'region'],
+    ['hukou', '户口所在地', 'region'],
     ['hukouType', '户口类型', 'text', '如 家庭户口 / 学校集体户口'],
-    ['currentCity', '现居城市', 'text'],
+    ['currentCity', '现居城市', 'region'],
     ['zipcode', '邮编', 'text'],
     ['address', '详细地址', 'text'],
     ['health', '健康状况', 'select', ['', '健康', '良好', '有病史']],
-    ['gaokaoOrigin', '高考生源地', 'text', '如 浙江省'],
+    ['gaokaoOrigin', '高考生源地', 'region'],
     ['isFreshGraduate', '是否应届毕业生', 'select', ['', '是', '否']],
   ]],
   ['求职意向', [
     ['applyPosition', '意向岗位', 'text'],
     ['expectCity', '意向城市', 'text'],
     ['expectSalary', '期望薪资', 'text'],
-    ['availableDate', '到岗时间', 'text', '如 2027-07-01 / 一周内'],
+    ['availableDate', '到岗时间', 'date'],
     ['jobType', '期望工作性质', 'select', ['', '全职', '兼职', '实习']],
     ['adjust', '是否服从调剂', 'select', ['', '是', '否']],
     ['source', '获知渠道', 'text', '如 公司官网'],
@@ -122,6 +126,101 @@ let stopWatch = null;
 // 由入口在读到资料之后调用
 export function initPanel(initialData) {
   data = initialData;
+}
+
+// 省 / 市 / 区 三级联动，选完拼成「浙江省杭州市西湖区」这样的整串
+function regionPicker(value, setValue) {
+  const parsed = splitAddress(value);
+  const box = el('div', 'region');
+  const makeSelect = (placeholder) => {
+    const s = el('select');
+    const empty = el('option', null, placeholder);
+    empty.value = '';
+    s.appendChild(empty);
+    return s;
+  };
+  const provSel = makeSelect('省');
+  const citySel = makeSelect('市');
+  const areaSel = makeSelect('区 / 县');
+  const detail = el('input');
+  detail.type = 'text';
+  detail.placeholder = '详细地址（可选）';
+  detail.value = parsed.detail || '';
+
+  const codeOf = (map, name) => Object.keys(map).find((code) => map[code] === name) || '';
+  const fillSelect = (sel, map, placeholder, current) => {
+    sel.innerHTML = '';
+    const empty = el('option', null, placeholder);
+    empty.value = '';
+    sel.appendChild(empty);
+    Object.keys(map).forEach((code) => {
+      const option = el('option', null, map[code]);
+      option.value = code;
+      sel.appendChild(option);
+    });
+    sel.value = codeOf(map, current) || '';
+  };
+  const emit = () => {
+    const province = provSel.value ? REGIONS['86'][provSel.value] : '';
+    const city = citySel.value ? (REGIONS[provSel.value] || {})[citySel.value] || '' : '';
+    const district = areaSel.value ? (REGIONS[citySel.value] || {})[areaSel.value] || '' : '';
+    setValue([province, city, district].join('') + detail.value.trim());
+  };
+  const provinces = REGIONS['86'] || {};
+  fillSelect(provSel, provinces, '省', parsed.province);
+  fillSelect(citySel, REGIONS[provSel.value] || {}, '市', parsed.city);
+  fillSelect(areaSel, REGIONS[citySel.value] || {}, '区 / 县', parsed.district);
+  provSel.onchange = () => {
+    fillSelect(citySel, REGIONS[provSel.value] || {}, '市', '');
+    fillSelect(areaSel, REGIONS[citySel.value] || {}, '区 / 县', '');
+    emit();
+  };
+  citySel.onchange = () => {
+    fillSelect(areaSel, REGIONS[citySel.value] || {}, '区 / 县', '');
+    emit();
+  };
+  areaSel.onchange = emit;
+  detail.oninput = emit;
+  box.appendChild(provSel);
+  box.appendChild(citySel);
+  box.appendChild(areaSel);
+  box.appendChild(detail);
+  return box;
+}
+
+// 编辑资料时的控件：文本框、下拉、长文本、日期、省市区
+function makeFieldControl(type, extra, value, setValue) {
+  if (type === 'region') return regionPicker(value, setValue);
+  if (type === 'select') {
+    const inp = el('select');
+    (extra || ['']).forEach((o) => {
+      const op = el('option', null, o === '' ? '（不填）' : o);
+      op.value = o;
+      inp.appendChild(op);
+    });
+    inp.value = value == null ? '' : String(value);
+    inp.onchange = () => setValue(inp.value);
+    return inp;
+  }
+  if (type === 'textarea') {
+    const inp = el('textarea');
+    inp.value = value == null ? '' : String(value);
+    inp.oninput = () => setValue(inp.value);
+    return inp;
+  }
+  if (type === 'date') {
+    const inp = el('input');
+    inp.type = 'date';
+    inp.value = value == null ? '' : String(value);
+    inp.oninput = () => setValue(inp.value);
+    return inp;
+  }
+  const inp = el('input');
+  inp.type = 'text';
+  if (extra) inp.placeholder = extra;
+  inp.value = value == null ? '' : String(value);
+  inp.oninput = () => setValue(inp.value);
+  return inp;
 }
 
 function el(tag, cls, text) {
@@ -319,30 +418,9 @@ function renderEditor(bd) {
       const label = f[1];
       const type = f[2];
       const extra = f[3];
-      const wrap = el('div', 'f' + (type === 'textarea' ? ' wide' : ''));
+      const wrap = el('div', 'f' + (type === 'textarea' || type === 'region' ? ' wide' : ''));
       wrap.appendChild(el('label', null, label));
-      let inp;
-      if (type === 'select') {
-        inp = el('select');
-        (extra || ['']).forEach((o) => {
-          const op = el('option', null, o === '' ? '（不填）' : o);
-          op.value = o;
-          inp.appendChild(op);
-        });
-        inp.value = draft[key] == null ? '' : String(draft[key]);
-        inp.onchange = () => { draft[key] = inp.value; };
-      } else if (type === 'textarea') {
-        inp = el('textarea');
-        inp.value = draft[key] == null ? '' : String(draft[key]);
-        inp.oninput = () => { draft[key] = inp.value; };
-      } else {
-        inp = el('input');
-        inp.type = 'text';
-        if (extra) inp.placeholder = extra;
-        inp.value = draft[key] == null ? '' : String(draft[key]);
-        inp.oninput = () => { draft[key] = inp.value; };
-      }
-      wrap.appendChild(inp);
+      wrap.appendChild(makeFieldControl(type, extra, draft[key], (v) => { draft[key] = v; }));
       grid.appendChild(wrap);
     });
     bd.appendChild(grid);
@@ -431,28 +509,7 @@ function renderBlockList(box, key, form) {
       const extra = f[3];
       const wrap = el('div', 'f' + (type === 'textarea' ? ' wide' : ''));
       wrap.appendChild(el('label', null, label));
-      let inp;
-      if (type === 'select') {
-        inp = el('select');
-        (extra || ['']).forEach((o) => {
-          const op = el('option', null, o === '' ? '（不填）' : o);
-          op.value = o;
-          inp.appendChild(op);
-        });
-        inp.value = item[field] == null ? '' : String(item[field]);
-        inp.onchange = () => { item[field] = inp.value; };
-      } else if (type === 'textarea') {
-        inp = el('textarea');
-        inp.value = item[field] == null ? '' : String(item[field]);
-        inp.oninput = () => { item[field] = inp.value; };
-      } else {
-        inp = el('input');
-        inp.type = 'text';
-        if (extra) inp.placeholder = extra;
-        inp.value = item[field] == null ? '' : String(item[field]);
-        inp.oninput = () => { item[field] = inp.value; };
-      }
-      wrap.appendChild(inp);
+      wrap.appendChild(makeFieldControl(type, extra, item[field], (v) => { item[field] = v; }));
       grid.appendChild(wrap);
     });
     block.appendChild(grid);
