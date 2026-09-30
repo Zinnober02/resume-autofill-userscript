@@ -11,6 +11,9 @@
 - 面板内直接编辑资料，也可以导出成 `我的资料.json` 备份，或者从文件导入覆盖。
 - 补充规则：脚本认不出来的字段，可以自己写一条「网页上的文字 → 要填进去的内容」。
 - 申请表放在 iframe 里时，主页面上的按钮会指挥子框架一起填。
+- 日期与时间：`type=date` / `month` / `time` / `datetime-local`、年 / 月 / 日 分开的下拉框、组件库的日期选择器都能填；填不进去的会列进「需要手动处理」。
+- 页面上新出现的编辑框自动填：点「添加」新增的经历区块、弹出的对话框。
+- 资料支持多段教育经历与工作经历，可以按段数自动点「添加」把区块补足。
 - 填充结束后列出已填字段、需要手动处理的字段、没认出来的字段。
 
 ## 安装
@@ -49,6 +52,10 @@ https://raw.githubusercontent.com/Zinnober02/resume-autofill-userscript/main/dis
 | `src/core/value.js` | 教育经历分段、日期格式、字段中文名 |
 | `src/core/storage.js` | 用 `GM_getValue` / `GM_setValue` 读写资料 |
 | `src/core/filler.js` | 填充引擎 |
+| `src/core/date-widget.js` | 年 / 月 / 日 分开的控件组与组件库日期选择器 |
+| `src/core/blocks.js` | 经历区块的分段识别 |
+| `src/core/watcher.js` | 页面上新出现的编辑框自动填充 |
+| `src/core/block-adder.js` | 按资料段数点「添加」补足经历区块 |
 | `src/core/messaging.js` | 跨 iframe 调度 |
 | `src/core/env.js` | 顶层框架判断与界面节点 id |
 | `src/ui/panel.js` | 网页面板 |

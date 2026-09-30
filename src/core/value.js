@@ -6,6 +6,16 @@ export const EDU_KEYS = {
   eduStart: 1, eduEnd: 1, gpa: 1, rank: 1,
 };
 
+export const WORK_KEYS = {
+  company: 1, department: 1, title: 1, workCity: 1, workStart: 1, workEnd: 1, workDesc: 1,
+};
+
+// 需要按日期格式填写的字段，用来识别年 / 月 / 日分开的控件组
+export const DATE_KEYS = {
+  birthday: 1, eduStart: 1, eduEnd: 1, workStart: 1, workEnd: 1, availableDate: 1,
+  bachelorStart: 1, bachelorEnd: 1,
+};
+
 export const BACHELOR_MAP = {
   school: 'bachelorSchool',
   college: 'bachelorCollege',
@@ -15,6 +25,17 @@ export const BACHELOR_MAP = {
   degreeLevel: 'bachelorDegreeLevel',
   gpa: 'bachelorGpa',
   rank: 'bachelorRank',
+};
+
+// 多段经历里每一项的字段名，与网页字段名的对应关系
+export const EDU_ITEM_FIELDS = {
+  school: 'school', college: 'college', major: 'major', degree: 'degree',
+  degreeLevel: 'degreeLevel', eduStart: 'start', eduEnd: 'end', gpa: 'gpa', rank: 'rank',
+};
+
+export const WORK_ITEM_FIELDS = {
+  company: 'company', department: 'department', title: 'title',
+  workCity: 'city', workStart: 'start', workEnd: 'end', workDesc: 'desc',
 };
 
 // 一段教育经历到底填哪一组：优先看这一行有没有写「本科 / 硕士」，
@@ -32,6 +53,49 @@ export function eduSegment(rowText, rowIndex) {
   return 'skip';
 }
 
+// 资料里的日期可能是 2003-09、2003-09-01 或 2003-09-01 09:30，统一取出各部分
+export function splitDateTime(value) {
+  const s = String(value == null ? '' : value).trim();
+  const m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?(?:[T ](\d{1,2}):(\d{2}))?$/);
+  if (!m) return null;
+  const hour = m[4] == null ? '' : ('0' + m[4]).slice(-2) + ':' + m[5];
+  return {
+    year: m[1],
+    month: ('0' + m[2]).slice(-2),
+    day: m[3] == null ? '01' : ('0' + m[3]).slice(-2),
+    hasDay: m[3] != null,
+    time: hour,
+  };
+}
+
+// 一段教育经历取哪一组资料：填了多段就按顺序取，只有旧式扁平字段时按最高学历 / 本科取
+function educationValue(key, profile, rowText, rowIndex) {
+  const list = profile && profile.educations;
+  if (list && list.length) {
+    const item = list[rowIndex - 1];
+    if (!item) return '';
+    const field = EDU_ITEM_FIELDS[key];
+    return item[field] == null ? '' : item[field];
+  }
+  const seg = eduSegment(rowText, rowIndex);
+  if (seg === 'skip') return '';
+  if (seg === 'bachelor') {
+    if (key === 'degree') return '本科';
+    const mapped = BACHELOR_MAP[key];
+    return mapped ? (profile[mapped] == null ? '' : profile[mapped]) : '';
+  }
+  return profile[key] == null ? '' : profile[key];
+}
+
+function workValue(key, profile, rowIndex) {
+  const list = profile && profile.works;
+  if (!list || !list.length) return null;
+  const item = list[rowIndex - 1];
+  if (!item) return '';
+  const field = WORK_ITEM_FIELDS[key];
+  return item[field] == null ? '' : item[field];
+}
+
 export function valueForField(key, profile, rowText, rowIndex) {
   if (key === 'age') {
     const by = parseInt(String(profile.birthday || '').slice(0, 4), 10);
@@ -42,13 +106,10 @@ export function valueForField(key, profile, rowText, rowIndex) {
     if (bm && now.getMonth() + 1 < bm) age -= 1;
     return String(age);
   }
-  if (!EDU_KEYS[key]) return profile[key] == null ? '' : profile[key];
-  const seg = eduSegment(rowText, rowIndex);
-  if (seg === 'skip') return '';
-  if (seg === 'bachelor') {
-    if (key === 'degree') return '本科';
-    const mapped = BACHELOR_MAP[key];
-    return mapped ? (profile[mapped] == null ? '' : profile[mapped]) : '';
+  if (EDU_KEYS[key]) return educationValue(key, profile, rowText, rowIndex);
+  if (WORK_KEYS[key]) {
+    const work = workValue(key, profile, rowIndex);
+    if (work !== null) return work;
   }
   return profile[key] == null ? '' : profile[key];
 }
@@ -68,18 +129,21 @@ export function matchExtra(profile, label, attr, rowText) {
   return null;
 }
 
-// 日期输入框按控件要求的格式输出
+// 日期输入框按控件要求的格式输出；返回空串表示这个控件表达不了资料里的日期
 export function formatValue(el, value) {
-  const v = String(value);
-  if (!/^\d{4}-\d{2}(-\d{2})?$/.test(v)) return v;
+  const date = splitDateTime(value);
+  if (!date) return String(value);
   const type = (el.type || '').toLowerCase();
-  const full = v.length === 7 ? v + '-01' : v;
-  if (type === 'month') return v.slice(0, 7);
+  const full = date.year + '-' + date.month + '-' + date.day;
+  if (type === 'month') return date.year + '-' + date.month;
   if (type === 'date') return full;
+  if (type === 'datetime-local') return full + 'T' + (date.time || '00:00');
+  if (type === 'time') return date.time;
   const ph = el.getAttribute('placeholder') || '';
+  if (/年/.test(ph) && /[日号]/.test(ph)) return date.year + '年' + date.month + '月' + date.day + '日';
   if (ph.indexOf('/') >= 0) return full.replace(/-/g, '/');
-  if (/年.*月/.test(ph)) return full.slice(0, 4) + '年' + full.slice(5, 7) + '月';
-  return v;
+  if (/年.*月/.test(ph)) return date.year + '年' + date.month + '月';
+  return String(value);
 }
 
 export const FIELD_NAMES = {

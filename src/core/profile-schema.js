@@ -1,4 +1,5 @@
 // 资料字段模板：脚本本身不含任何个人信息，这里只是一份空白结构
+// educations 与 works 可以放多段经历，留空时按旧式的扁平字段填写
 export const SEED_PROFILES = {
   '默认': {
     name: '',
@@ -55,6 +56,30 @@ export const SEED_PROFILES = {
     emergencyName: '',
     emergencyRelation: '',
     emergencyPhone: '',
+    educations: [],
+    works: [],
     extra: [],
   },
 };
+
+export const EDU_ITEM_FORM = [
+  ['school', '学校', 'text'],
+  ['college', '学院', 'text'],
+  ['major', '专业', 'text'],
+  ['degree', '学历', 'select', ['', '硕士', '博士', '本科', '大专']],
+  ['degreeLevel', '学位', 'select', ['', '学士', '硕士', '博士']],
+  ['start', '入学时间', 'text', '如 2025-09'],
+  ['end', '毕业时间', 'text', '如 2027-07'],
+  ['gpa', 'GPA/绩点', 'text'],
+  ['rank', '排名', 'text'],
+];
+
+export const WORK_ITEM_FORM = [
+  ['company', '公司', 'text'],
+  ['department', '部门', 'text'],
+  ['title', '职位', 'text'],
+  ['city', '工作城市', 'text'],
+  ['start', '开始时间', 'text', '如 2026-04'],
+  ['end', '结束时间', 'text', '如 2026-09'],
+  ['desc', '工作内容描述', 'textarea'],
+];

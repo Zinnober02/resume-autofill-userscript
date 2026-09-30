@@ -1,8 +1,12 @@
 // 填充引擎：扫描页面控件，逐个识别字段并写入资料
 import { pickKey, norm } from './rules.js';
-import { deepQueryAll, labelText, attrText, visibleText, rowContainer, sectionScope, fieldHint, visible, isOurUI } from './dom.js';
+import { deepQueryAll, labelText, attrText, visibleText, rowContainer, sectionContainer, fieldHint, visible, isOurUI } from './dom.js';
 import { setVal, bestOptionIndex, isCustomSelect, fillCustomSelect } from './form-control.js';
-import { EDU_KEYS, valueForField, matchExtra, formatValue, FIELD_NAMES } from './value.js';
+import { EDU_KEYS, WORK_KEYS, DATE_KEYS, valueForField, matchExtra, formatValue, splitDateTime, FIELD_NAMES } from './value.js';
+import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
+import { blockIndexOf } from './blocks.js';
+
+const START_OF_END = { eduEnd: 'eduStart', workEnd: 'workStart' };
 
 export function describe(el, key) {
   const lb = labelText(el) || (el.getAttribute && el.getAttribute('placeholder')) || key || '';
@@ -33,41 +37,141 @@ export function highlight(el) {
   } catch (e) { /* 忽略 */ }
 }
 
+// 往一个已经识别出字段的控件里写值；选不中或格式不被接受时记进「需要手动处理」
+async function applyValue(el, key, value, options, profile, st) {
+  const name = FIELD_NAMES[key] || '自定义';
+  if (el.tagName === 'SELECT') {
+    const preferEnrolled = key === 'degree' && /在读|应届/.test(String(profile.degreeNote || '在读'));
+    const idx = bestOptionIndex(el, value, preferEnrolled);
+    if (idx >= 0) {
+      const text = String(el.options[idx].text).trim();
+      setVal(el, el.options[idx].value);
+      st.count += 1;
+      st.filled.push(name + ' → ' + text);
+      if (options.highlight) highlight(el);
+    } else if (isCustomSelect(el)) {
+      const ok = await fillCustomSelect(el, value);
+      if (ok) { st.count += 1; st.filled.push(name); }
+      else st.manual.push(name + '：下拉框没有合适选项，请手动选');
+    } else {
+      st.manual.push(name + '：下拉框没有合适选项，请手动选');
+    }
+    return;
+  }
+
+  if (options.fillDatePickers && isDatePicker(el)) {
+    const ok = await fillDatePicker(el, value);
+    if (ok) {
+      st.count += 1;
+      st.filled.push(name);
+      if (options.highlight) highlight(el);
+    } else {
+      st.manual.push(name + '：日期选择器没有选上，请手动选');
+    }
+    return;
+  }
+
+  if (isCustomSelect(el) && el.readOnly) {
+    const ok = await fillCustomSelect(el, value);
+    if (ok) {
+      st.count += 1;
+      st.filled.push(name);
+      if (options.highlight) highlight(el);
+    } else {
+      st.manual.push(name + '：自定义下拉框，请手动选');
+    }
+    return;
+  }
+
+  const out = formatValue(el, value);
+  if (!out) {
+    st.manual.push(name + '：这个控件要填具体时刻，资料里没有，请手动填写');
+    return;
+  }
+  setVal(el, out);
+  if (!String(el.value || '').trim()) {
+    st.manual.push(name + '：控件不接受这个格式，请手动填写');
+    return;
+  }
+  st.count += 1;
+  st.filled.push(name);
+  if (options.highlight) highlight(el);
+}
+
+// 结束时间往往要参照开始时间，先填同一块里的开始时间
+function pairedStart(el, key) {
+  const startKey = START_OF_END[key];
+  if (!startKey) return null;
+  const scope = rowContainer(el) || sectionContainer(el);
+  if (!scope || !scope.querySelectorAll) return null;
+  const list = scope.querySelectorAll('input, select, textarea');
+  for (let i = 0; i < list.length; i += 1) {
+    const n = list[i];
+    if (n === el) break;
+    if (isOurUI(n) || shouldSkip(n) || alreadyFilled(n)) continue;
+    const k = pickKey({ label: labelText(n), attr: attrText(n), hint: fieldHint(n), allowHint: false });
+    if (k === startKey) return { node: n, key: k };
+  }
+  return null;
+}
+
 export async function runFill(profile, opts) {
-  const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true }, opts || {});
+  const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true, fillDatePickers: true }, opts || {});
   const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0 };
   const nodes = deepQueryAll('input, textarea, select');
+  const handled = new Set();
+  const segments = new Map();
 
-  // 教育经历可能有好几段（硕士、本科），数出当前字段属于第几段。
-  // 只数同一区块内带教育类字段的行，按纵向位置排序。
-  const scopeCache = new Map();
-  const eduRowIndex = (el) => {
-    const scope = sectionScope(el) || document;
-    let rowList = scopeCache.get(scope);
-    if (!rowList) {
-      const rows = new Map();
-      const inside = scope.querySelectorAll ? scope.querySelectorAll('input, textarea, select') : [];
-      for (let i = 0; i < inside.length; i += 1) {
-        const n = inside[i];
-        const k = pickKey({ label: labelText(n), attr: attrText(n), hint: '', allowHint: false });
-        if (!k || !EDU_KEYS[k]) continue;
-        const r = rowContainer(n);
-        if (!rows.has(r)) {
-          let top = 0;
-          try { top = r.getBoundingClientRect().top; } catch (e) { top = 0; }
-          rows.set(r, top);
-        }
-      }
-      rowList = Array.from(rows.entries()).sort((a, b) => a[1] - b[1]).map((e) => e[0]);
-      scopeCache.set(scope, rowList);
+  const skipNode = (el) => {
+    if (isOurUI(el)) return true;
+    if (options.fillDatePickers && el.tagName === 'INPUT' && el.readOnly && isDatePicker(el)) return false;
+    return shouldSkip(el);
+  };
+
+  // 教育、工作经历可能有好几段，数出当前字段属于第几段
+  const indexCache = new Map();
+  const rowIndexOf = (el, key) => {
+    const type = EDU_KEYS[key] ? 'edu' : (WORK_KEYS[key] ? 'work' : '');
+    if (!type) return 1;
+    if (!indexCache.has(el)) indexCache.set(el, blockIndexOf(el, type));
+    return indexCache.get(el);
+  };
+
+  const segmentOf = (el) => {
+    const row = rowContainer(el);
+    if (!row) return null;
+    if (!segments.has(row)) segments.set(row, dateSegmentGroup(el));
+    return segments.get(row);
+  };
+
+  // 年 / 月 / 日 分开的下拉框或输入框：整组一起写
+  const fillSegment = (el, group, rowText) => {
+    const rowKey = pickKey({ label: rowText, attr: '', hint: fieldHint(el), allowHint: true });
+    if (!rowKey || !DATE_KEYS[rowKey]) return false;
+    const date = splitDateTime(valueForField(rowKey, profile, rowText, rowIndexOf(el, rowKey)));
+    if (!date) return false;
+    const name = FIELD_NAMES[rowKey] || rowKey;
+    let written = 0;
+    let blocked = 0;
+    for (let i = 0; i < group.nodes.length; i += 1) {
+      const node = group.nodes[i];
+      handled.add(node);
+      if (options.onlyEmpty && alreadyFilled(node)) continue;
+      if (writeDateSegment(node, group.roles[i], date)) written += 1;
+      else blocked += 1;
     }
-    const idx = rowList.indexOf(rowContainer(el));
-    return idx < 0 ? 1 : idx + 1;
+    if (written) {
+      st.count += written;
+      st.filled.push(name + '（年/月/日分开填写）');
+      if (options.highlight) group.nodes.forEach((n) => highlight(n));
+    }
+    if (blocked) st.manual.push(name + '：年/月/日控件没有能选中的值，请手动选');
+    return written > 0 || blocked > 0;
   };
 
   for (let i = 0; i < nodes.length; i += 1) {
     const el = nodes[i];
-    if (isOurUI(el) || shouldSkip(el)) continue;
+    if (handled.has(el) || skipNode(el)) continue;
     const type = (el.type || '').toLowerCase();
 
     if (type === 'file') {
@@ -138,6 +242,10 @@ export async function runFill(profile, opts) {
       const ex = matchExtra(profile, label, attr, rowText);
       if (ex) { key = ex; direct = true; }
     }
+    if (!key) {
+      const group = segmentOf(el);
+      if (group && fillSegment(el, group, rowText)) continue;
+    }
 
     if (!key) {
       if (visible(el) && !alreadyFilled(el)) {
@@ -147,45 +255,18 @@ export async function runFill(profile, opts) {
       continue;
     }
 
-    const value = direct ? key.slice(6) : valueForField(key, profile, rowText, EDU_KEYS[key] ? eduRowIndex(el) : 1);
+    const value = direct ? key.slice(6) : valueForField(key, profile, rowText, rowIndexOf(el, key));
     if (!value) continue;
+
+    const pair = pairedStart(el, key);
+    if (pair && !alreadyFilled(pair.node)) {
+      const pairRow = visibleText(rowContainer(pair.node), 160);
+      const pairValue = valueForField(pair.key, profile, pairRow, rowIndexOf(pair.node, pair.key));
+      if (pairValue) await applyValue(pair.node, pair.key, pairValue, options, profile, st);
+    }
+
     if (options.onlyEmpty && alreadyFilled(el)) continue;
-
-    if (el.tagName === 'SELECT') {
-      const preferEnrolled = key === 'degree' && /在读|应届/.test(String(profile.degreeNote || '在读'));
-      const idx = bestOptionIndex(el, value, preferEnrolled);
-      if (idx >= 0) {
-        const text = String(el.options[idx].text).trim();
-        setVal(el, el.options[idx].value);
-        st.count += 1;
-        st.filled.push((FIELD_NAMES[key] || '自定义') + ' → ' + text);
-        if (options.highlight) highlight(el);
-      } else if (isCustomSelect(el)) {
-        const ok = await fillCustomSelect(el, value);
-        if (ok) { st.count += 1; st.filled.push(FIELD_NAMES[key] || '自定义'); }
-        else st.manual.push((FIELD_NAMES[key] || '自定义') + '：下拉框没有合适选项，请手动选');
-      } else {
-        st.manual.push((FIELD_NAMES[key] || '自定义') + '：下拉框没有合适选项，请手动选');
-      }
-      continue;
-    }
-
-    if (isCustomSelect(el) && el.readOnly) {
-      const ok = await fillCustomSelect(el, value);
-      if (ok) {
-        st.count += 1;
-        st.filled.push(FIELD_NAMES[key] || '自定义');
-        if (options.highlight) highlight(el);
-      } else {
-        st.manual.push((FIELD_NAMES[key] || '自定义') + '：自定义下拉框，请手动选');
-      }
-      continue;
-    }
-
-    setVal(el, formatValue(el, value));
-    st.count += 1;
-    st.filled.push(FIELD_NAMES[key] || '自定义');
-    if (options.highlight) highlight(el);
+    await applyValue(el, key, value, options, profile, st);
   }
 
   return st;

@@ -11,7 +11,11 @@ export const RUN_MSG = '__resume_autofill_run__';
 export const RES_MSG = '__resume_autofill_result__';
 
 // 加载页面与脚本；GM_* 用内存里的键值对顶替
-export async function createPage(html, scriptPath) {
+export function storageWith(profile) {
+  return { v: 1, current: '默认', profiles: { '默认': profile } };
+}
+
+export async function createPage(html, scriptPath, options) {
   const code = await readFile(scriptPath || userscriptPath, 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://jobs.example.com/apply',
@@ -28,6 +32,7 @@ export async function createPage(html, scriptPath) {
     return { x: 0, y: top, top, left: 0, right: 120, bottom: top + 24, width: 120, height: 24, toJSON() { return this; } };
   };
   const store = new Map();
+  if (options && options.storage) store.set('ra_data_v1', options.storage);
   window.GM_getValue = (key, fallback) => (store.has(key) ? store.get(key) : fallback);
   window.GM_setValue = (key, value) => { store.set(key, value); };
   window.GM_registerMenuCommand = () => {};

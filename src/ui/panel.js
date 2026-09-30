@@ -3,6 +3,9 @@ import { IS_TOP, UI_ID } from '../core/env.js';
 import { sleep } from '../core/dom.js';
 import { saveData } from '../core/storage.js';
 import { runFill } from '../core/filler.js';
+import { addMissingBlocks } from '../core/block-adder.js';
+import { watchNewBlocks } from '../core/watcher.js';
+import { EDU_ITEM_FORM, WORK_ITEM_FORM } from '../core/profile-schema.js';
 import { RUN_MSG, RES_MSG, FRAME_ID, relayToChildren } from '../core/messaging.js';
 
 const CSS = [
@@ -38,6 +41,8 @@ const CSS = [
   '.extra input{border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:12px;width:100%}',
   '.x{border:0;background:#fee2e2;color:#b91c1c;border-radius:6px;cursor:pointer;font-size:15px}',
   '.hidden{display:none}',
+  '.block{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:10px;background:#f8fafc}',
+  '.block-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:#64748b;font-weight:600}',
 ].join('');
 
 const FORM_GROUPS = [
@@ -117,7 +122,16 @@ let data = null;
 let draft = null;
 let view = 'main';
 let lastReport = null;
-const settings = { onlyEmpty: true, autoConsent: false, highlight: true };
+const settings = {
+  onlyEmpty: true,
+  autoConsent: false,
+  highlight: true,
+  fillDatePickers: true,
+  autoFillNewBlocks: true,
+  addMissingBlocks: false,
+};
+let filling = false;
+let stopWatch = null;
 
 // 由入口在读到资料之后调用
 export function initPanel(initialData) {
@@ -267,6 +281,9 @@ function renderMain(bd) {
   };
   opts.appendChild(mkOpt('只填空白字段（不覆盖我已经填好的内容）', 'onlyEmpty'));
   opts.appendChild(mkOpt('自动勾选「我已阅读并同意」这类条款', 'autoConsent'));
+  opts.appendChild(mkOpt('日期选择器自动点开弹层选日期', 'fillDatePickers'));
+  opts.appendChild(mkOpt('页面上新出现的编辑框自动填（点「添加」之后出现的那些）', 'autoFillNewBlocks'));
+  opts.appendChild(mkOpt('资料里有几段经历就自动点「添加」补几段', 'addMissingBlocks'));
   bd.appendChild(opts);
 
   if (lastReport) {
@@ -345,6 +362,9 @@ function renderEditor(bd) {
     bd.appendChild(grid);
   });
 
+  renderBlocks(bd, 'educations', '多段教育经历', '网页上的教育经历可以点「添加」加好几段时，在这里一段一行地填；留空就按上面「教育经历」里的字段填。', EDU_ITEM_FORM);
+  renderBlocks(bd, 'works', '多段工作 / 实习经历', '网页上的工作经历可以点「添加」加好几段时，在这里一段一行地填；留空就按上面「工作 / 实习经历」里的字段填。', WORK_ITEM_FORM);
+
   bd.appendChild(el('h4', null, '补充规则（认不出来的字段写这里）'));
   const extraBox = el('div');
   bd.appendChild(extraBox);
@@ -388,6 +408,68 @@ function renderExtras(container) {
   container.appendChild(add);
 }
 
+// 多段经历：一段一个卡片，可以随时加一段或删一段
+function renderBlocks(bd, key, title, tip, form) {
+  if (!Array.isArray(draft[key])) draft[key] = [];
+  bd.appendChild(el('h4', null, title));
+  bd.appendChild(el('div', 'tip', tip));
+  const box = el('div');
+  box.style.marginTop = '8px';
+  bd.appendChild(box);
+  renderBlockList(box, key, form);
+}
+
+function renderBlockList(box, key, form) {
+  box.innerHTML = '';
+  const list = draft[key];
+  list.forEach((item, index) => {
+    const block = el('div', 'block');
+    const hd = el('div', 'block-hd');
+    hd.appendChild(el('span', null, '第 ' + (index + 1) + ' 段'));
+    const del = el('button', 'x', '×');
+    del.onclick = () => { list.splice(index, 1); renderBlockList(box, key, form); };
+    hd.appendChild(del);
+    block.appendChild(hd);
+    const grid = el('div', 'grid');
+    form.forEach((f) => {
+      const field = f[0];
+      const label = f[1];
+      const type = f[2];
+      const extra = f[3];
+      const wrap = el('div', 'f' + (type === 'textarea' ? ' wide' : ''));
+      wrap.appendChild(el('label', null, label));
+      let inp;
+      if (type === 'select') {
+        inp = el('select');
+        (extra || ['']).forEach((o) => {
+          const op = el('option', null, o === '' ? '（不填）' : o);
+          op.value = o;
+          inp.appendChild(op);
+        });
+        inp.value = item[field] == null ? '' : String(item[field]);
+        inp.onchange = () => { item[field] = inp.value; };
+      } else if (type === 'textarea') {
+        inp = el('textarea');
+        inp.value = item[field] == null ? '' : String(item[field]);
+        inp.oninput = () => { item[field] = inp.value; };
+      } else {
+        inp = el('input');
+        inp.type = 'text';
+        if (extra) inp.placeholder = extra;
+        inp.value = item[field] == null ? '' : String(item[field]);
+        inp.oninput = () => { item[field] = inp.value; };
+      }
+      wrap.appendChild(inp);
+      grid.appendChild(wrap);
+    });
+    block.appendChild(grid);
+    box.appendChild(block);
+  });
+  const add = el('button', 'btn', '+ 加一段');
+  add.onclick = () => { list.push({}); renderBlockList(box, key, form); };
+  box.appendChild(add);
+}
+
 function saveDraft() {
   if (!draft) return;
   data.profiles[data.current] = draft;
@@ -407,6 +489,11 @@ async function doFill(btn) {
     return;
   }
   if (btn) { btn.disabled = true; btn.textContent = '正在填…'; }
+  filling = true;
+  if (settings.addMissingBlocks) {
+    await addMissingBlocks(profile, 'edu');
+    await addMissingBlocks(profile, 'work');
+  }
   const got = [];
   const onMsg = (ev) => {
     const d = ev.data;
@@ -422,6 +509,7 @@ async function doFill(btn) {
     got.push({ count: 0, filled: [], manual: ['填充出错：' + (e && e.message ? e.message : e)], unknown: [] });
   } finally {
     window.removeEventListener('message', onMsg);
+    filling = false;
   }
   const uniq = (arr) => {
     const seen = {};
@@ -486,6 +574,27 @@ function exportFile() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+}
+
+// 页面上新出现的编辑框（点「添加」出现的、弹窗里的）自动填一次
+export function startAutoFill() {
+  if (stopWatch) return;
+  stopWatch = watchNewBlocks(() => {
+    if (!settings.autoFillNewBlocks || filling || !data) return;
+    const profile = data.profiles[data.current] || {};
+    if (profileIsEmpty(profile)) return;
+    filling = true;
+    runFill(profile, settings).then((st) => {
+      if (!st.count) return;
+      lastReport = {
+        count: st.count,
+        filled: st.filled.slice(0, 30),
+        manual: st.manual.slice(0, 20),
+        unknown: st.unknown.slice(0, 20),
+      };
+      if (app) render();
+    }).finally(() => { filling = false; });
+  });
 }
 
 export function forceShow() {

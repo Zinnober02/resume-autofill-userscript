@@ -3,7 +3,7 @@ import { IS_TOP, UI_ID } from './core/env.js';
 import { deepQueryAll, visible } from './core/dom.js';
 import { loadData } from './core/storage.js';
 import { initMessaging } from './core/messaging.js';
-import { initPanel, build, forceShow, fillCurrentPage } from './ui/panel.js';
+import { initPanel, build, forceShow, fillCurrentPage, startAutoFill } from './ui/panel.js';
 
 initMessaging();
 
@@ -32,6 +32,7 @@ function bootstrap() {
     if (tries < 6) setTimeout(tick, 1800);
   };
   tick();
+  startAutoFill();
   try {
     GM_registerMenuCommand('简历自动填充：打开面板', forceShow);
     GM_registerMenuCommand('简历自动填充：立即填一遍', () => { forceShow(); fillCurrentPage(); });

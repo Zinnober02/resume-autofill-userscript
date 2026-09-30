@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.1.0
+// @version      1.2.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -247,25 +247,6 @@
     }
     return null;
   }
-  function sectionScope(el2) {
-    const probe = visibleText(el2.parentElement || el2, 120);
-    const type = sectionType(norm(probe)) || sectionType(norm(fieldHint(el2)));
-    if (!type) return null;
-    const re = type === "edu" ? EDU_RE : WORK_RE;
-    const otherRe = type === "edu" ? WORK_RE : EDU_RE;
-    let cur = el2;
-    let best = null;
-    for (let i = 0; i < 8 && cur; i += 1) {
-      cur = cur.parentElement;
-      if (!cur || cur.tagName === "BODY") break;
-      const txt = cur.textContent || "";
-      if (txt.length > 3e3) break;
-      if (!re.test(txt)) break;
-      best = cur;
-      if (otherRe.test(txt)) break;
-    }
-    return best;
-  }
   function fieldHint(el2) {
     const sec = sectionContainer(el2);
     if (!sec) return "";
@@ -336,9 +317,31 @@
       emergencyName: "",
       emergencyRelation: "",
       emergencyPhone: "",
+      educations: [],
+      works: [],
       extra: []
     }
   };
+  var EDU_ITEM_FORM = [
+    ["school", "学校", "text"],
+    ["college", "学院", "text"],
+    ["major", "专业", "text"],
+    ["degree", "学历", "select", ["", "硕士", "博士", "本科", "大专"]],
+    ["degreeLevel", "学位", "select", ["", "学士", "硕士", "博士"]],
+    ["start", "入学时间", "text", "如 2025-09"],
+    ["end", "毕业时间", "text", "如 2027-07"],
+    ["gpa", "GPA/绩点", "text"],
+    ["rank", "排名", "text"]
+  ];
+  var WORK_ITEM_FORM = [
+    ["company", "公司", "text"],
+    ["department", "部门", "text"],
+    ["title", "职位", "text"],
+    ["city", "工作城市", "text"],
+    ["start", "开始时间", "text", "如 2026-04"],
+    ["end", "结束时间", "text", "如 2026-09"],
+    ["desc", "工作内容描述", "textarea"]
+  ];
 
   // src/core/storage.js
   var STORE_KEY = "ra_data_v1";
@@ -349,6 +352,19 @@
       profiles[n] = JSON.parse(JSON.stringify(SEED_PROFILES[n]));
     });
     return { v: 1, current: names[0], profiles };
+  }
+  function normalizeData(d) {
+    Object.keys(d.profiles).forEach((name) => {
+      const p = d.profiles[name];
+      if (!p || typeof p !== "object") {
+        d.profiles[name] = seedData().profiles["默认"];
+        return;
+      }
+      if (!Array.isArray(p.educations)) p.educations = [];
+      if (!Array.isArray(p.works)) p.works = [];
+      if (!Array.isArray(p.extra)) p.extra = [];
+    });
+    return d;
   }
   function loadData() {
     let d = null;
@@ -366,7 +382,7 @@
     }
     if (!d || !d.profiles || !Object.keys(d.profiles).length) d = seedData();
     if (!d.current || !d.profiles[d.current]) d.current = Object.keys(d.profiles)[0];
-    return d;
+    return normalizeData(d);
   }
   function saveData(d) {
     try {
@@ -461,6 +477,25 @@
     gpa: 1,
     rank: 1
   };
+  var WORK_KEYS = {
+    company: 1,
+    department: 1,
+    title: 1,
+    workCity: 1,
+    workStart: 1,
+    workEnd: 1,
+    workDesc: 1
+  };
+  var DATE_KEYS = {
+    birthday: 1,
+    eduStart: 1,
+    eduEnd: 1,
+    workStart: 1,
+    workEnd: 1,
+    availableDate: 1,
+    bachelorStart: 1,
+    bachelorEnd: 1
+  };
   var BACHELOR_MAP = {
     school: "bachelorSchool",
     college: "bachelorCollege",
@@ -470,6 +505,26 @@
     degreeLevel: "bachelorDegreeLevel",
     gpa: "bachelorGpa",
     rank: "bachelorRank"
+  };
+  var EDU_ITEM_FIELDS = {
+    school: "school",
+    college: "college",
+    major: "major",
+    degree: "degree",
+    degreeLevel: "degreeLevel",
+    eduStart: "start",
+    eduEnd: "end",
+    gpa: "gpa",
+    rank: "rank"
+  };
+  var WORK_ITEM_FIELDS = {
+    company: "company",
+    department: "department",
+    title: "title",
+    workCity: "city",
+    workStart: "start",
+    workEnd: "end",
+    workDesc: "desc"
   };
   function eduSegment(rowText, rowIndex) {
     const t = norm(rowText);
@@ -483,6 +538,44 @@
     if (rowIndex === 2) return "bachelor";
     return "skip";
   }
+  function splitDateTime(value) {
+    const s = String(value == null ? "" : value).trim();
+    const m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?(?:[T ](\d{1,2}):(\d{2}))?$/);
+    if (!m) return null;
+    const hour = m[4] == null ? "" : ("0" + m[4]).slice(-2) + ":" + m[5];
+    return {
+      year: m[1],
+      month: ("0" + m[2]).slice(-2),
+      day: m[3] == null ? "01" : ("0" + m[3]).slice(-2),
+      hasDay: m[3] != null,
+      time: hour
+    };
+  }
+  function educationValue(key, profile, rowText, rowIndex) {
+    const list = profile && profile.educations;
+    if (list && list.length) {
+      const item = list[rowIndex - 1];
+      if (!item) return "";
+      const field = EDU_ITEM_FIELDS[key];
+      return item[field] == null ? "" : item[field];
+    }
+    const seg = eduSegment(rowText, rowIndex);
+    if (seg === "skip") return "";
+    if (seg === "bachelor") {
+      if (key === "degree") return "本科";
+      const mapped = BACHELOR_MAP[key];
+      return mapped ? profile[mapped] == null ? "" : profile[mapped] : "";
+    }
+    return profile[key] == null ? "" : profile[key];
+  }
+  function workValue(key, profile, rowIndex) {
+    const list = profile && profile.works;
+    if (!list || !list.length) return null;
+    const item = list[rowIndex - 1];
+    if (!item) return "";
+    const field = WORK_ITEM_FIELDS[key];
+    return item[field] == null ? "" : item[field];
+  }
   function valueForField(key, profile, rowText, rowIndex) {
     if (key === "age") {
       const by = parseInt(String(profile.birthday || "").slice(0, 4), 10);
@@ -493,13 +586,10 @@
       if (bm && now.getMonth() + 1 < bm) age -= 1;
       return String(age);
     }
-    if (!EDU_KEYS[key]) return profile[key] == null ? "" : profile[key];
-    const seg = eduSegment(rowText, rowIndex);
-    if (seg === "skip") return "";
-    if (seg === "bachelor") {
-      if (key === "degree") return "本科";
-      const mapped = BACHELOR_MAP[key];
-      return mapped ? profile[mapped] == null ? "" : profile[mapped] : "";
+    if (EDU_KEYS[key]) return educationValue(key, profile, rowText, rowIndex);
+    if (WORK_KEYS[key]) {
+      const work = workValue(key, profile, rowIndex);
+      if (work !== null) return work;
     }
     return profile[key] == null ? "" : profile[key];
   }
@@ -517,16 +607,19 @@
     return null;
   }
   function formatValue(el2, value) {
-    const v = String(value);
-    if (!/^\d{4}-\d{2}(-\d{2})?$/.test(v)) return v;
+    const date = splitDateTime(value);
+    if (!date) return String(value);
     const type = (el2.type || "").toLowerCase();
-    const full = v.length === 7 ? v + "-01" : v;
-    if (type === "month") return v.slice(0, 7);
+    const full = date.year + "-" + date.month + "-" + date.day;
+    if (type === "month") return date.year + "-" + date.month;
     if (type === "date") return full;
+    if (type === "datetime-local") return full + "T" + (date.time || "00:00");
+    if (type === "time") return date.time;
     const ph = el2.getAttribute("placeholder") || "";
+    if (/年/.test(ph) && /[日号]/.test(ph)) return date.year + "年" + date.month + "月" + date.day + "日";
     if (ph.indexOf("/") >= 0) return full.replace(/-/g, "/");
-    if (/年.*月/.test(ph)) return full.slice(0, 4) + "年" + full.slice(5, 7) + "月";
-    return v;
+    if (/年.*月/.test(ph)) return date.year + "年" + date.month + "月";
+    return String(value);
   }
   var FIELD_NAMES = {
     name: "姓名",
@@ -586,7 +679,275 @@
     emergencyPhone: "紧急联系人电话"
   };
 
+  // src/core/date-widget.js
+  var PICKER_CLASS_RE = /ant-picker|ant-calendar-picker|el-date-editor|ivu-date-picker|arco-picker|n-date-picker|van-calendar|flatpickr|react-datepicker|vdp-datepicker|datepicker|date-picker/i;
+  var PANEL_SELECTOR = '.ant-picker-dropdown, .el-picker-panel, .ivu-picker-panel, .arco-picker-container, .n-date-panel, .flatpickr-calendar, .react-datepicker, [class*="picker-panel"], [class*="datepicker"], [class*="date-picker"]';
+  var PREV_SELECTOR = '[class*="super-prev"], [class*="prev"]';
+  function isDatePicker(el2) {
+    if (!el2 || el2.tagName !== "INPUT" || isCustomSelect(el2)) return false;
+    const cls = String(el2.className || "") + " " + String(el2.parentElement && el2.parentElement.className || "");
+    return PICKER_CLASS_RE.test(cls);
+  }
+  function panelVisible(panel) {
+    try {
+      const r = panel.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return false;
+    } catch (e) {
+    }
+    const style = panel.getAttribute && panel.getAttribute("style");
+    if (style && /display\s*:\s*none/i.test(style)) return false;
+    return true;
+  }
+  function findPanel() {
+    const list = deepQueryAll(PANEL_SELECTOR).filter(panelVisible);
+    return list.length ? list[list.length - 1] : null;
+  }
+  function clickNode(node) {
+    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    node.click();
+  }
+  function innermost(hits) {
+    for (let i = 0; i < hits.length; i += 1) {
+      const hit = hits[i];
+      let wraps = false;
+      for (let j = 0; j < hits.length; j += 1) {
+        if (i !== j && hit.contains && hit.contains(hits[j])) {
+          wraps = true;
+          break;
+        }
+      }
+      if (!wraps) return hit;
+    }
+    return hits[0];
+  }
+  function clickCell(panel, texts) {
+    const cells = panel.querySelectorAll("td, th, li, button, a, span, div");
+    const hits = [];
+    for (let i = 0; i < cells.length; i += 1) {
+      const cell = cells[i];
+      const text = String(cell.textContent || "").trim();
+      if (texts.indexOf(text) < 0) continue;
+      const cls = String(cell.className || "");
+      if (/disabled|prev|next|out-of-range|not-current/.test(cls)) continue;
+      hits.push(cell);
+    }
+    if (!hits.length) return false;
+    clickNode(innermost(hits));
+    return true;
+  }
+  function openYearView(panel) {
+    const headers = panel.querySelectorAll('[class*="header"], [class*="title"]');
+    for (let i = 0; i < headers.length; i += 1) {
+      const parts = headers[i].querySelectorAll("button, span, div, a");
+      const hits = [];
+      for (let j = 0; j < parts.length; j += 1) {
+        if (/^\d{4}\s*年?$/.test(String(parts[j].textContent || "").trim())) hits.push(parts[j]);
+      }
+      if (hits.length) {
+        clickNode(innermost(hits));
+        return true;
+      }
+    }
+    return false;
+  }
+  function clickPrev(panel) {
+    const list = panel.querySelectorAll(PREV_SELECTOR);
+    for (let i = 0; i < list.length; i += 1) {
+      const cls = String(list[i].className || "");
+      if (/next|super-next/.test(cls)) continue;
+      clickNode(list[i]);
+      return true;
+    }
+    return false;
+  }
+  function clickNext(panel) {
+    const list = panel.querySelectorAll('[class*="next"]');
+    for (let i = 0; i < list.length; i += 1) {
+      const cls = String(list[i].className || "");
+      if (/prev/.test(cls) && !/next/.test(cls)) continue;
+      clickNode(list[i]);
+      return true;
+    }
+    return false;
+  }
+  async function pickYear(panel, year) {
+    for (let i = 0; i < 12; i += 1) {
+      if (clickCell(panel, [year])) return true;
+      if (!clickPrev(panel)) break;
+      await sleep(90);
+    }
+    for (let i = 0; i < 24; i += 1) {
+      if (clickCell(panel, [year])) return true;
+      if (!clickNext(panel)) break;
+      await sleep(90);
+    }
+    return false;
+  }
+  function monthTexts(month) {
+    const n = String(Number(month));
+    return [n + "月", month + "月", n, month];
+  }
+  function dayTexts(day) {
+    const n = String(Number(day));
+    return [n, day, n + "日", day + "日"];
+  }
+  async function fillDatePicker(el2, value) {
+    const date = splitDateTime(value);
+    if (!date) return false;
+    let panel = null;
+    try {
+      el2.focus();
+      el2.click();
+      await sleep(260);
+      panel = findPanel();
+      if (!panel) return false;
+      await sleep(60);
+      if (openYearView(panel)) await sleep(160);
+      if (!await pickYear(panel, date.year)) return false;
+      await sleep(120);
+      if (!clickCell(panel, monthTexts(date.month))) return false;
+      await sleep(120);
+      if (!clickCell(panel, dayTexts(date.day))) return false;
+      await sleep(200);
+      return !!String(el2.value || "").trim();
+    } catch (e) {
+      return false;
+    } finally {
+      if (panel) {
+        try {
+          document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        } catch (e) {
+        }
+      }
+    }
+  }
+  function dateRole(el2) {
+    const label = norm(labelText(el2));
+    const attr = norm(String(el2.getAttribute("name") || "") + " " + String(el2.getAttribute("id") || "") + " " + String(el2.getAttribute("placeholder") || ""));
+    const whole = pickKey({ label, attr, hint: "", allowHint: false });
+    if (whole && DATE_KEYS[whole]) return "";
+    if (/(^|[^a-z])(year|yyyy)([^a-z]|$)/.test(attr)) return "year";
+    if (/(^|[^a-z])month([^a-z]|$)/.test(attr)) return "month";
+    if (/(^|[^a-z])(day|dd)([^a-z]|$)/.test(attr)) return "day";
+    if (/年$/.test(label)) return "year";
+    if (/月$/.test(label)) return "month";
+    if (/[日号]$/.test(label)) return "day";
+    return "";
+  }
+  function usable(node) {
+    if (!node || !node.tagName) return false;
+    if (node.disabled || node.readOnly) return false;
+    if ((node.type || "").toLowerCase() === "hidden") return false;
+    return !isOurUI(node);
+  }
+  function dateSegmentGroup(el2) {
+    const row = rowContainer(el2);
+    if (!row || !row.querySelectorAll) return null;
+    const nodes = [];
+    const inside = row.querySelectorAll("input, select");
+    for (let i = 0; i < inside.length; i += 1) {
+      if (usable(inside[i])) nodes.push(inside[i]);
+    }
+    if (nodes.length < 2 || nodes.length > 3) return null;
+    const fallback = nodes.length === 3 ? ["year", "month", "day"] : ["year", "month"];
+    const roles = nodes.map((node) => dateRole(node));
+    const taken = {};
+    for (let i = 0; i < roles.length; i += 1) {
+      if (roles[i] && !taken[roles[i]]) taken[roles[i]] = 1;
+      else roles[i] = "";
+    }
+    for (let i = 0; i < roles.length; i += 1) {
+      if (roles[i]) continue;
+      const pick = fallback.filter((r) => !taken[r])[0];
+      if (!pick) return null;
+      roles[i] = pick;
+      taken[pick] = 1;
+    }
+    if (!(taken.year && taken.month)) return null;
+    return { row, nodes, roles };
+  }
+  function writeDateSegment(node, role, date) {
+    const want = role === "year" ? date.year : role === "month" ? date.month : date.day;
+    if (node.tagName === "SELECT") {
+      const idx = bestOptionIndex(node, want, false);
+      if (idx < 0) return false;
+      setVal(node, node.options[idx].value);
+      return !!String(node.value || "").trim();
+    }
+    setVal(node, want);
+    return !!String(node.value || "").trim();
+  }
+
+  // src/core/blocks.js
+  var KEYS_OF = { edu: EDU_KEYS, work: WORK_KEYS };
+  function fieldKeyOf(el2, type) {
+    if (!el2 || !el2.tagName) return null;
+    const tag = el2.tagName;
+    if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return null;
+    if (isOurUI(el2)) return null;
+    const t = (el2.type || "").toLowerCase();
+    if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") return null;
+    const k = pickKey({ label: labelText(el2), attr: attrText(el2), hint: "", allowHint: false });
+    return k && KEYS_OF[type][k] ? k : null;
+  }
+  function fieldsOf(root, type) {
+    const out = [];
+    if (!root || !root.querySelectorAll) return out;
+    if (fieldKeyOf(root, type)) out.push(root);
+    const list = root.querySelectorAll("input, textarea, select");
+    for (let i = 0; i < list.length; i += 1) {
+      if (fieldKeyOf(list[i], type)) out.push(list[i]);
+    }
+    return out;
+  }
+  function repeatedLevel(el2, type) {
+    let node = el2;
+    for (let depth = 0; depth < 8 && node && node.parentElement; depth += 1) {
+      node = node.parentElement;
+      if (!node || node === document.body || node === document.documentElement) break;
+      const parent = node.parentElement;
+      if (!parent) break;
+      const blocks = [];
+      for (let i = 0; i < parent.children.length; i += 1) {
+        const child = parent.children[i];
+        if (fieldsOf(child, type).length) blocks.push(child);
+      }
+      if (blocks.length > 1) {
+        const sigs = blocks.map((b) => fieldsOf(b, type).map((n) => fieldKeyOf(n, type)));
+        for (let i = 0; i < sigs.length; i += 1) {
+          for (let j = i + 1; j < sigs.length; j += 1) {
+            if (sigs[i].some((k) => sigs[j].indexOf(k) >= 0)) return { node, blocks };
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function firstFieldOfType(type) {
+    const list = document.querySelectorAll("input, textarea, select");
+    for (let i = 0; i < list.length; i += 1) {
+      if (fieldKeyOf(list[i], type)) return list[i];
+    }
+    return null;
+  }
+  function blockContainers(type) {
+    const field = firstFieldOfType(type);
+    if (!field) return [];
+    const hit = repeatedLevel(field, type);
+    return hit ? hit.blocks : [];
+  }
+  function blockIndexOf(el2, type) {
+    const hit = repeatedLevel(el2, type);
+    if (!hit) return 1;
+    for (let i = 0; i < hit.blocks.length; i += 1) {
+      if (hit.blocks[i] === hit.node || hit.blocks[i].contains(el2)) return i + 1;
+    }
+    return 1;
+  }
+
   // src/core/filler.js
+  var START_OF_END = { eduEnd: "eduStart", workEnd: "workStart" };
   function describe(el2, key) {
     const lb = labelText(el2) || el2.getAttribute && el2.getAttribute("placeholder") || key || "";
     return String(lb).replace(/\s+/g, " ").trim().slice(0, 40);
@@ -615,41 +976,129 @@
     } catch (e) {
     }
   }
+  async function applyValue(el2, key, value, options, profile, st) {
+    const name = FIELD_NAMES[key] || "自定义";
+    if (el2.tagName === "SELECT") {
+      const preferEnrolled = key === "degree" && /在读|应届/.test(String(profile.degreeNote || "在读"));
+      const idx = bestOptionIndex(el2, value, preferEnrolled);
+      if (idx >= 0) {
+        const text = String(el2.options[idx].text).trim();
+        setVal(el2, el2.options[idx].value);
+        st.count += 1;
+        st.filled.push(name + " → " + text);
+        if (options.highlight) highlight(el2);
+      } else if (isCustomSelect(el2)) {
+        const ok = await fillCustomSelect(el2, value);
+        if (ok) {
+          st.count += 1;
+          st.filled.push(name);
+        } else st.manual.push(name + "：下拉框没有合适选项，请手动选");
+      } else {
+        st.manual.push(name + "：下拉框没有合适选项，请手动选");
+      }
+      return;
+    }
+    if (options.fillDatePickers && isDatePicker(el2)) {
+      const ok = await fillDatePicker(el2, value);
+      if (ok) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el2);
+      } else {
+        st.manual.push(name + "：日期选择器没有选上，请手动选");
+      }
+      return;
+    }
+    if (isCustomSelect(el2) && el2.readOnly) {
+      const ok = await fillCustomSelect(el2, value);
+      if (ok) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el2);
+      } else {
+        st.manual.push(name + "：自定义下拉框，请手动选");
+      }
+      return;
+    }
+    const out = formatValue(el2, value);
+    if (!out) {
+      st.manual.push(name + "：这个控件要填具体时刻，资料里没有，请手动填写");
+      return;
+    }
+    setVal(el2, out);
+    if (!String(el2.value || "").trim()) {
+      st.manual.push(name + "：控件不接受这个格式，请手动填写");
+      return;
+    }
+    st.count += 1;
+    st.filled.push(name);
+    if (options.highlight) highlight(el2);
+  }
+  function pairedStart(el2, key) {
+    const startKey = START_OF_END[key];
+    if (!startKey) return null;
+    const scope = rowContainer(el2) || sectionContainer(el2);
+    if (!scope || !scope.querySelectorAll) return null;
+    const list = scope.querySelectorAll("input, select, textarea");
+    for (let i = 0; i < list.length; i += 1) {
+      const n = list[i];
+      if (n === el2) break;
+      if (isOurUI(n) || shouldSkip(n) || alreadyFilled(n)) continue;
+      const k = pickKey({ label: labelText(n), attr: attrText(n), hint: fieldHint(n), allowHint: false });
+      if (k === startKey) return { node: n, key: k };
+    }
+    return null;
+  }
   async function runFill(profile, opts) {
-    const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true }, opts || {});
+    const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true, fillDatePickers: true }, opts || {});
     const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0 };
     const nodes = deepQueryAll("input, textarea, select");
-    const scopeCache = /* @__PURE__ */ new Map();
-    const eduRowIndex = (el2) => {
-      const scope = sectionScope(el2) || document;
-      let rowList = scopeCache.get(scope);
-      if (!rowList) {
-        const rows = /* @__PURE__ */ new Map();
-        const inside = scope.querySelectorAll ? scope.querySelectorAll("input, textarea, select") : [];
-        for (let i = 0; i < inside.length; i += 1) {
-          const n = inside[i];
-          const k = pickKey({ label: labelText(n), attr: attrText(n), hint: "", allowHint: false });
-          if (!k || !EDU_KEYS[k]) continue;
-          const r = rowContainer(n);
-          if (!rows.has(r)) {
-            let top = 0;
-            try {
-              top = r.getBoundingClientRect().top;
-            } catch (e) {
-              top = 0;
-            }
-            rows.set(r, top);
-          }
-        }
-        rowList = Array.from(rows.entries()).sort((a, b) => a[1] - b[1]).map((e) => e[0]);
-        scopeCache.set(scope, rowList);
+    const handled = /* @__PURE__ */ new Set();
+    const segments = /* @__PURE__ */ new Map();
+    const skipNode = (el2) => {
+      if (isOurUI(el2)) return true;
+      if (options.fillDatePickers && el2.tagName === "INPUT" && el2.readOnly && isDatePicker(el2)) return false;
+      return shouldSkip(el2);
+    };
+    const indexCache = /* @__PURE__ */ new Map();
+    const rowIndexOf = (el2, key) => {
+      const type = EDU_KEYS[key] ? "edu" : WORK_KEYS[key] ? "work" : "";
+      if (!type) return 1;
+      if (!indexCache.has(el2)) indexCache.set(el2, blockIndexOf(el2, type));
+      return indexCache.get(el2);
+    };
+    const segmentOf = (el2) => {
+      const row = rowContainer(el2);
+      if (!row) return null;
+      if (!segments.has(row)) segments.set(row, dateSegmentGroup(el2));
+      return segments.get(row);
+    };
+    const fillSegment = (el2, group, rowText) => {
+      const rowKey = pickKey({ label: rowText, attr: "", hint: fieldHint(el2), allowHint: true });
+      if (!rowKey || !DATE_KEYS[rowKey]) return false;
+      const date = splitDateTime(valueForField(rowKey, profile, rowText, rowIndexOf(el2, rowKey)));
+      if (!date) return false;
+      const name = FIELD_NAMES[rowKey] || rowKey;
+      let written = 0;
+      let blocked = 0;
+      for (let i = 0; i < group.nodes.length; i += 1) {
+        const node = group.nodes[i];
+        handled.add(node);
+        if (options.onlyEmpty && alreadyFilled(node)) continue;
+        if (writeDateSegment(node, group.roles[i], date)) written += 1;
+        else blocked += 1;
       }
-      const idx = rowList.indexOf(rowContainer(el2));
-      return idx < 0 ? 1 : idx + 1;
+      if (written) {
+        st.count += written;
+        st.filled.push(name + "（年/月/日分开填写）");
+        if (options.highlight) group.nodes.forEach((n) => highlight(n));
+      }
+      if (blocked) st.manual.push(name + "：年/月/日控件没有能选中的值，请手动选");
+      return written > 0 || blocked > 0;
     };
     for (let i = 0; i < nodes.length; i += 1) {
       const el2 = nodes[i];
-      if (isOurUI(el2) || shouldSkip(el2)) continue;
+      if (handled.has(el2) || skipNode(el2)) continue;
       const type = (el2.type || "").toLowerCase();
       if (type === "file") {
         if (visible(el2)) st.manual.push("手动上传文件：" + describe(el2));
@@ -722,50 +1171,26 @@
         }
       }
       if (!key) {
+        const group = segmentOf(el2);
+        if (group && fillSegment(el2, group, rowText)) continue;
+      }
+      if (!key) {
         if (visible(el2) && !alreadyFilled(el2)) {
           const d = describe(el2) || attr.slice(0, 30);
           if (d && st.unknown.indexOf(d) < 0) st.unknown.push(d);
         }
         continue;
       }
-      const value = direct ? key.slice(6) : valueForField(key, profile, rowText, EDU_KEYS[key] ? eduRowIndex(el2) : 1);
+      const value = direct ? key.slice(6) : valueForField(key, profile, rowText, rowIndexOf(el2, key));
       if (!value) continue;
+      const pair = pairedStart(el2, key);
+      if (pair && !alreadyFilled(pair.node)) {
+        const pairRow = visibleText(rowContainer(pair.node), 160);
+        const pairValue = valueForField(pair.key, profile, pairRow, rowIndexOf(pair.node, pair.key));
+        if (pairValue) await applyValue(pair.node, pair.key, pairValue, options, profile, st);
+      }
       if (options.onlyEmpty && alreadyFilled(el2)) continue;
-      if (el2.tagName === "SELECT") {
-        const preferEnrolled = key === "degree" && /在读|应届/.test(String(profile.degreeNote || "在读"));
-        const idx = bestOptionIndex(el2, value, preferEnrolled);
-        if (idx >= 0) {
-          const text = String(el2.options[idx].text).trim();
-          setVal(el2, el2.options[idx].value);
-          st.count += 1;
-          st.filled.push((FIELD_NAMES[key] || "自定义") + " → " + text);
-          if (options.highlight) highlight(el2);
-        } else if (isCustomSelect(el2)) {
-          const ok = await fillCustomSelect(el2, value);
-          if (ok) {
-            st.count += 1;
-            st.filled.push(FIELD_NAMES[key] || "自定义");
-          } else st.manual.push((FIELD_NAMES[key] || "自定义") + "：下拉框没有合适选项，请手动选");
-        } else {
-          st.manual.push((FIELD_NAMES[key] || "自定义") + "：下拉框没有合适选项，请手动选");
-        }
-        continue;
-      }
-      if (isCustomSelect(el2) && el2.readOnly) {
-        const ok = await fillCustomSelect(el2, value);
-        if (ok) {
-          st.count += 1;
-          st.filled.push(FIELD_NAMES[key] || "自定义");
-          if (options.highlight) highlight(el2);
-        } else {
-          st.manual.push((FIELD_NAMES[key] || "自定义") + "：自定义下拉框，请手动选");
-        }
-        continue;
-      }
-      setVal(el2, formatValue(el2, value));
-      st.count += 1;
-      st.filled.push(FIELD_NAMES[key] || "自定义");
-      if (options.highlight) highlight(el2);
+      await applyValue(el2, key, value, options, profile, st);
     }
     return st;
   }
@@ -806,6 +1231,113 @@
     });
   }
 
+  // src/core/block-adder.js
+  var ADD_RE = /添加|新增|再加|继续添加|增加一条|添加一条|add/i;
+  var SECTION_RE = { edu: /教育|学历|院校|学校/, work: /工作|实习|职业/ };
+  function targetBlockCount(profile, type) {
+    const list = type === "edu" ? profile.educations : profile.works;
+    if (Array.isArray(list) && list.length) return list.length;
+    if (type === "edu") {
+      const hasBachelor = ["bachelorSchool", "bachelorCollege", "bachelorMajor", "bachelorStart", "bachelorEnd"].some((k) => String(profile[k] || "").trim());
+      return hasBachelor ? 2 : 1;
+    }
+    return String(profile.company || profile.title || "").trim() ? 1 : 0;
+  }
+  function findAddButton(type) {
+    const re = SECTION_RE[type];
+    const nodes = deepQueryAll('button, a, [role="button"]');
+    let loose = null;
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      if (isOurUI(node)) continue;
+      const text = String(node.textContent || "").replace(/\s+/g, "");
+      if (!text || !ADD_RE.test(text)) continue;
+      let cur = node.parentElement;
+      for (let depth = 0; depth < 6 && cur; depth += 1) {
+        if (re.test(String(cur.textContent || "").slice(0, 400))) return node;
+        cur = cur.parentElement;
+      }
+      if (!loose) loose = node;
+    }
+    return null;
+  }
+  async function waitForGrow(type, before, limit) {
+    const deadline = Date.now() + limit;
+    while (Date.now() < deadline) {
+      if (blockContainers(type).length > before) return true;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    return false;
+  }
+  async function addMissingBlocks(profile, type) {
+    const target = targetBlockCount(profile, type);
+    if (target <= 1) return 0;
+    let added = 0;
+    for (let i = 1; i < target; i += 1) {
+      if (blockContainers(type).length >= target) break;
+      const btn = findAddButton(type);
+      if (!btn) break;
+      const before = blockContainers(type).length;
+      btn.click();
+      if (!await waitForGrow(type, before, 1500)) break;
+      added += 1;
+    }
+    return added;
+  }
+
+  // src/core/watcher.js
+  var THROTTLE_MS = 600;
+  function fillableControls(node) {
+    const list = [];
+    if (!node || node.nodeType !== 1) return list;
+    if (node.matches && node.matches("input, textarea, select")) list.push(node);
+    if (node.querySelectorAll) {
+      const inside = node.querySelectorAll("input, textarea, select");
+      for (let i = 0; i < inside.length; i += 1) list.push(inside[i]);
+    }
+    return list;
+  }
+  function hasFillable(node) {
+    if (isOurUI(node)) return false;
+    const list = fillableControls(node);
+    for (let i = 0; i < list.length; i += 1) {
+      const el2 = list[i];
+      if (isOurUI(el2)) continue;
+      const t = (el2.type || "").toLowerCase();
+      if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") continue;
+      if (pickKey({ label: labelText(el2), attr: attrText(el2), hint: "", allowHint: false })) return true;
+      if (String(el2.getAttribute("name") || "").trim()) return true;
+    }
+    return false;
+  }
+  function watchNewBlocks(onNewBlocks) {
+    if (typeof MutationObserver !== "function") return () => {
+    };
+    let timer = null;
+    const observer = new MutationObserver((records) => {
+      let hit = false;
+      for (let i = 0; i < records.length && !hit; i += 1) {
+        const added = records[i].addedNodes;
+        for (let j = 0; j < added.length; j += 1) {
+          if (hasFillable(added[j])) {
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (!hit) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        onNewBlocks();
+      }, THROTTLE_MS);
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }
+
   // src/ui/panel.js
   var CSS2 = [
     '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}',
@@ -839,7 +1371,9 @@
     ".extra{display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;margin-bottom:6px}",
     ".extra input{border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:12px;width:100%}",
     ".x{border:0;background:#fee2e2;color:#b91c1c;border-radius:6px;cursor:pointer;font-size:15px}",
-    ".hidden{display:none}"
+    ".hidden{display:none}",
+    ".block{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:10px;background:#f8fafc}",
+    ".block-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:#64748b;font-weight:600}"
   ].join("");
   var FORM_GROUPS = [
     ["基本信息", [
@@ -917,7 +1451,16 @@
   var draft = null;
   var view = "main";
   var lastReport = null;
-  var settings = { onlyEmpty: true, autoConsent: false, highlight: true };
+  var settings = {
+    onlyEmpty: true,
+    autoConsent: false,
+    highlight: true,
+    fillDatePickers: true,
+    autoFillNewBlocks: true,
+    addMissingBlocks: false
+  };
+  var filling = false;
+  var stopWatch = null;
   function initPanel(initialData) {
     data = initialData;
   }
@@ -1098,6 +1641,9 @@
     };
     opts.appendChild(mkOpt("只填空白字段（不覆盖我已经填好的内容）", "onlyEmpty"));
     opts.appendChild(mkOpt("自动勾选「我已阅读并同意」这类条款", "autoConsent"));
+    opts.appendChild(mkOpt("日期选择器自动点开弹层选日期", "fillDatePickers"));
+    opts.appendChild(mkOpt("页面上新出现的编辑框自动填（点「添加」之后出现的那些）", "autoFillNewBlocks"));
+    opts.appendChild(mkOpt("资料里有几段经历就自动点「添加」补几段", "addMissingBlocks"));
     bd.appendChild(opts);
     if (lastReport) {
       const box = el("div");
@@ -1179,6 +1725,8 @@
       });
       bd.appendChild(grid);
     });
+    renderBlocks(bd, "educations", "多段教育经历", "网页上的教育经历可以点「添加」加好几段时，在这里一段一行地填；留空就按上面「教育经历」里的字段填。", EDU_ITEM_FORM);
+    renderBlocks(bd, "works", "多段工作 / 实习经历", "网页上的工作经历可以点「添加」加好几段时，在这里一段一行地填；留空就按上面「工作 / 实习经历」里的字段填。", WORK_ITEM_FORM);
     bd.appendChild(el("h4", null, "补充规则（认不出来的字段写这里）"));
     const extraBox = el("div");
     bd.appendChild(extraBox);
@@ -1236,6 +1784,77 @@
     };
     container.appendChild(add);
   }
+  function renderBlocks(bd, key, title, tip, form) {
+    if (!Array.isArray(draft[key])) draft[key] = [];
+    bd.appendChild(el("h4", null, title));
+    bd.appendChild(el("div", "tip", tip));
+    const box = el("div");
+    box.style.marginTop = "8px";
+    bd.appendChild(box);
+    renderBlockList(box, key, form);
+  }
+  function renderBlockList(box, key, form) {
+    box.innerHTML = "";
+    const list = draft[key];
+    list.forEach((item, index) => {
+      const block = el("div", "block");
+      const hd = el("div", "block-hd");
+      hd.appendChild(el("span", null, "第 " + (index + 1) + " 段"));
+      const del = el("button", "x", "×");
+      del.onclick = () => {
+        list.splice(index, 1);
+        renderBlockList(box, key, form);
+      };
+      hd.appendChild(del);
+      block.appendChild(hd);
+      const grid = el("div", "grid");
+      form.forEach((f) => {
+        const field = f[0];
+        const label = f[1];
+        const type = f[2];
+        const extra = f[3];
+        const wrap = el("div", "f" + (type === "textarea" ? " wide" : ""));
+        wrap.appendChild(el("label", null, label));
+        let inp;
+        if (type === "select") {
+          inp = el("select");
+          (extra || [""]).forEach((o) => {
+            const op = el("option", null, o === "" ? "（不填）" : o);
+            op.value = o;
+            inp.appendChild(op);
+          });
+          inp.value = item[field] == null ? "" : String(item[field]);
+          inp.onchange = () => {
+            item[field] = inp.value;
+          };
+        } else if (type === "textarea") {
+          inp = el("textarea");
+          inp.value = item[field] == null ? "" : String(item[field]);
+          inp.oninput = () => {
+            item[field] = inp.value;
+          };
+        } else {
+          inp = el("input");
+          inp.type = "text";
+          if (extra) inp.placeholder = extra;
+          inp.value = item[field] == null ? "" : String(item[field]);
+          inp.oninput = () => {
+            item[field] = inp.value;
+          };
+        }
+        wrap.appendChild(inp);
+        grid.appendChild(wrap);
+      });
+      block.appendChild(grid);
+      box.appendChild(block);
+    });
+    const add = el("button", "btn", "+ 加一段");
+    add.onclick = () => {
+      list.push({});
+      renderBlockList(box, key, form);
+    };
+    box.appendChild(add);
+  }
   function saveDraft() {
     if (!draft) return;
     data.profiles[data.current] = draft;
@@ -1255,6 +1874,11 @@
       btn.disabled = true;
       btn.textContent = "正在填…";
     }
+    filling = true;
+    if (settings.addMissingBlocks) {
+      await addMissingBlocks(profile, "edu");
+      await addMissingBlocks(profile, "work");
+    }
     const got = [];
     const onMsg = (ev) => {
       const d = ev.data;
@@ -1270,6 +1894,7 @@
       got.push({ count: 0, filled: [], manual: ["填充出错：" + (e && e.message ? e.message : e)], unknown: [] });
     } finally {
       window.removeEventListener("message", onMsg);
+      filling = false;
     }
     const uniq = (arr) => {
       const seen = {};
@@ -1338,6 +1963,27 @@
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(a.href), 8e3);
   }
+  function startAutoFill() {
+    if (stopWatch) return;
+    stopWatch = watchNewBlocks(() => {
+      if (!settings.autoFillNewBlocks || filling || !data) return;
+      const profile = data.profiles[data.current] || {};
+      if (profileIsEmpty(profile)) return;
+      filling = true;
+      runFill(profile, settings).then((st) => {
+        if (!st.count) return;
+        lastReport = {
+          count: st.count,
+          filled: st.filled.slice(0, 30),
+          manual: st.manual.slice(0, 20),
+          unknown: st.unknown.slice(0, 20)
+        };
+        if (app) render();
+      }).finally(() => {
+        filling = false;
+      });
+    });
+  }
   function forceShow() {
     if (!document.getElementById(UI_ID)) build();
     view = "panel";
@@ -1373,6 +2019,7 @@
       if (tries < 6) setTimeout(tick, 1800);
     };
     tick();
+    startAutoFill();
     try {
       GM_registerMenuCommand("简历自动填充：打开面板", forceShow);
       GM_registerMenuCommand("简历自动填充：立即填一遍", () => {
