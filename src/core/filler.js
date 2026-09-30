@@ -52,6 +52,18 @@ export function highlight(el) {
   } catch (e) { /* 忽略 */ }
 }
 
+// 地址类下拉常常只到省或市，按从完整到最细的顺序给出可用的关键词
+function addressWords(value) {
+  const addr = splitAddress(value);
+  const words = [String(value || '').trim(), addr.province, addr.city, addr.district];
+  const out = [];
+  words.forEach((word) => {
+    const w = String(word || '').trim();
+    if (w && out.indexOf(w) < 0) out.push(w);
+  });
+  return out.length ? out : [String(value || '').trim()];
+}
+
 // 手机号前面常常先有一个国家 / 地区代码下拉，电信上就是这样
 function isCountrySelect(el) {
   const text = Array.from(el.options).map((o) => o.textContent).join(' ');
@@ -79,25 +91,36 @@ async function applyValue(el, key, value, options, profile, st) {
   }
   if (el.tagName === 'SELECT') {
     const preferEnrolled = key === 'degree' && /在读|应届/.test(String(profile.degreeNote || '在读'));
-    const idx = bestOptionIndex(el, value, preferEnrolled);
+    // 地址类下拉常常只到省或市，整串匹配不上就退到上一级
+    const words = ADDRESS_KEYS[key] ? addressWords(value) : [value];
+    let idx = -1;
+    let used = '';
+    for (let i = 0; i < words.length && idx < 0; i += 1) {
+      idx = bestOptionIndex(el, words[i], preferEnrolled);
+      used = words[i];
+    }
     if (idx >= 0) {
       const text = String(el.options[idx].text).trim();
       setVal(el, el.options[idx].value);
       st.count += 1;
       st.filled.push(name + ' → ' + text);
       if (options.highlight) highlight(el);
+      if (used !== value) st.manual.push(name + '：下拉框只到「' + text + '」，后面的部分请手动补全');
       return;
     }
-    // 学校、公司这类字段是「点开、输入关键词、再选候选」的控件，直接写值组件不认
+    // 学校、公司这类字段是「点开、输入关键词、再选候选」的控件，直接写值组件不认。
+    // 地址类的下拉多半只认到省或市，逐级往下试
     if (isSearchSelect(el)) {
-      const ok = await fillSearchSelect(el, value);
-      if (ok) {
-        st.count += 1;
-        st.filled.push(name);
-        if (options.highlight) highlight(el);
-      } else {
-        st.manual.push(name + '：可搜索下拉里没有匹配项，请手动选');
+      const words = ADDRESS_KEYS[key] ? addressWords(value) : [value];
+      for (let i = 0; i < words.length; i += 1) {
+        if (await fillSearchSelect(el, words[i])) {
+          st.count += 1;
+          st.filled.push(name + ' → ' + words[i]);
+          if (options.highlight) highlight(el);
+          return;
+        }
       }
+      st.manual.push(name + '：可搜索下拉里没有匹配项，请手动选');
       return;
     }
     if (isCustomSelect(el)) {

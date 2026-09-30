@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.7.0
+// @version      1.7.1
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -1123,12 +1123,28 @@
     }
     await sleep(220);
     const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
-    if (box) {
-      setVal(box, want);
-      await sleep(280);
+    const settled = () => {
+      const idx = bestOptionIndex(el2, want, false);
+      if (idx >= 0) {
+        setVal(el2, el2.options[idx].value);
+        return true;
+      }
+      return false;
+    };
+    let hit = null;
+    for (let i = 0; i < 8 && !hit; i += 1) {
+      await sleep(180);
+      if (settled()) return true;
+      hit = pickOption(optionsIn(wrap), want);
     }
-    const list = optionsIn(wrap);
-    const hit = pickOption(list, want);
+    if (!hit && box) {
+      setVal(box, want);
+      for (let i = 0; i < 10 && !hit; i += 1) {
+        await sleep(180);
+        if (settled()) return true;
+        hit = pickOption(optionsIn(wrap), want);
+      }
+    }
     if (!hit) {
       if (toggle) clickNode(toggle);
       return false;
@@ -1444,6 +1460,16 @@
     } catch (e) {
     }
   }
+  function addressWords(value) {
+    const addr = splitAddress(value);
+    const words = [String(value || "").trim(), addr.province, addr.city, addr.district];
+    const out = [];
+    words.forEach((word) => {
+      const w = String(word || "").trim();
+      if (w && out.indexOf(w) < 0) out.push(w);
+    });
+    return out.length ? out : [String(value || "").trim()];
+  }
   function isCountrySelect(el2) {
     const text = Array.from(el2.options).map((o) => o.textContent).join(" ");
     if (!text) return false;
@@ -1468,24 +1494,33 @@
     }
     if (el2.tagName === "SELECT") {
       const preferEnrolled = key === "degree" && /在读|应届/.test(String(profile.degreeNote || "在读"));
-      const idx = bestOptionIndex(el2, value, preferEnrolled);
+      const words = ADDRESS_KEYS[key] ? addressWords(value) : [value];
+      let idx = -1;
+      let used = "";
+      for (let i = 0; i < words.length && idx < 0; i += 1) {
+        idx = bestOptionIndex(el2, words[i], preferEnrolled);
+        used = words[i];
+      }
       if (idx >= 0) {
         const text = String(el2.options[idx].text).trim();
         setVal(el2, el2.options[idx].value);
         st.count += 1;
         st.filled.push(name + " → " + text);
         if (options.highlight) highlight(el2);
+        if (used !== value) st.manual.push(name + "：下拉框只到「" + text + "」，后面的部分请手动补全");
         return;
       }
       if (isSearchSelect(el2)) {
-        const ok = await fillSearchSelect(el2, value);
-        if (ok) {
-          st.count += 1;
-          st.filled.push(name);
-          if (options.highlight) highlight(el2);
-        } else {
-          st.manual.push(name + "：可搜索下拉里没有匹配项，请手动选");
+        const words2 = ADDRESS_KEYS[key] ? addressWords(value) : [value];
+        for (let i = 0; i < words2.length; i += 1) {
+          if (await fillSearchSelect(el2, words2[i])) {
+            st.count += 1;
+            st.filled.push(name + " → " + words2[i]);
+            if (options.highlight) highlight(el2);
+            return;
+          }
         }
+        st.manual.push(name + "：可搜索下拉里没有匹配项，请手动选");
         return;
       }
       if (isCustomSelect(el2)) {
