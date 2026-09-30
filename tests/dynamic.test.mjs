@@ -36,17 +36,6 @@ test('资料里有两段教育经历时，按顺序填到两段里', async () =>
   assert.equal(field(dom, 'input[name="m2"]').value, '计算机科学与技术');
 });
 
-test('旧式扁平字段仍然可用：第一段取最高学历，第二段取本科', async () => {
-  const { dom, window } = await createPage(EDU_PAGE);
-  const profile = Object.assign({}, BASE, {
-    school: '示例大学', major: '软件工程',
-    bachelorSchool: '示例学院', bachelorMajor: '计算机科学与技术',
-  });
-  await runFill(window, profile, OPTIONS);
-  assert.equal(field(dom, 'input[name="s1"]').value, '示例大学');
-  assert.equal(field(dom, 'input[name="s2"]').value, '示例学院');
-});
-
 const LIST_PAGE = [
   '<!doctype html><html><body><form>',
   '<div class="row"><span>姓名</span><input name="fullName"></div>',
@@ -58,7 +47,7 @@ const LIST_PAGE = [
 ].join('');
 
 test('新出现的编辑框会被自动填上', async () => {
-  const profile = Object.assign({}, BASE, { company: '示例科技', title: '后端开发实习生' });
+  const profile = Object.assign({}, BASE, { works: [{ company: '示例科技', title: '后端开发实习生' }] });
   const { window } = await createPage(LIST_PAGE, undefined, { storage: storageWith(profile) });
   const list = window.document.getElementById('list');
   const item = window.document.createElement('div');

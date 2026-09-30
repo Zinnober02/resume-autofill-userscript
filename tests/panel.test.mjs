@@ -33,14 +33,15 @@ test('编辑资料视图列出全部字段，保存后写进存储', async () =>
   shadow.querySelector('.pill').click();
   buttonByText(shadow, '编辑资料').click();
   const fields = shadow.querySelectorAll('.f');
-  assert.equal(fields.length, 54);
+  assert.equal(fields.length, 41);
   const labels = Array.from(shadow.querySelectorAll('.f label')).map((n) => n.textContent);
-  for (const name of ['姓名', '手机号', '邮箱', '学校', '专业', 'GPA/绩点', '意向岗位', '与本人关系']) {
+  for (const name of ['姓名', '手机号', '邮箱', '证件类型', '健康状况', '高考生源地', '意向岗位', '是否服从调剂', '英语水平', '与本人关系', '项目经历描述']) {
     assert.ok(labels.includes(name), '编辑视图缺少字段：' + name);
   }
   const titles = Array.from(shadow.querySelectorAll('h4')).map((n) => n.textContent);
-  assert.ok(titles.includes('紧急联系人'));
-  assert.ok(titles.includes('补充规则（认不出来的字段写这里）'));
+  for (const name of ['基本信息', '求职意向', '教育经历', '工作 / 实习经历', '紧急联系人', '补充规则（认不出来的字段写这里）']) {
+    assert.ok(titles.includes(name), '编辑视图缺少分组：' + name);
+  }
   const nameInput = fields[0].querySelector('input');
   nameInput.value = '张三';
   nameInput.dispatchEvent(new window.Event('input', { bubbles: true }));
@@ -48,6 +49,25 @@ test('编辑资料视图列出全部字段，保存后写进存储', async () =>
   const saved = store.get('ra_data_v1');
   assert.ok(saved, '保存后应该写入存储');
   assert.equal(saved.profiles[saved.current].name, '张三');
+});
+
+test('教育经历按卡片增删，保存后写进 educations 数组', async () => {
+  const { window, store } = await createPage(PAGE);
+  const shadow = shadowOf(window);
+  shadow.querySelector('.pill').click();
+  buttonByText(shadow, '编辑资料').click();
+  assert.equal(shadow.querySelectorAll('.block').length, 0);
+  buttonByText(shadow, '+ 加一段').click();
+  const blocks = shadow.querySelectorAll('.block');
+  assert.equal(blocks.length, 1);
+  assert.equal(shadow.querySelectorAll('.f').length, 41 + 9);
+  const school = blocks[0].querySelector('input');
+  school.value = '示例大学';
+  school.dispatchEvent(new window.Event('input', { bubbles: true }));
+  buttonByText(shadow, '保存并返回').click();
+  const saved = store.get('ra_data_v1');
+  assert.equal(saved.profiles[saved.current].educations.length, 1);
+  assert.equal(saved.profiles[saved.current].educations[0].school, '示例大学');
 });
 
 test('补充规则能加一条并随资料一起保存', async () => {

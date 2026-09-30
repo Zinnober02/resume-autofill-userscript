@@ -1,11 +1,15 @@
 // 网页面板：填表按钮、资料编辑、导入导出
 import { IS_TOP, UI_ID } from '../core/env.js';
 import { sleep } from '../core/dom.js';
-import { saveData } from '../core/storage.js';
+import { saveData, assertData } from '../core/storage.js';
 import { runFill } from '../core/filler.js';
 import { addMissingBlocks } from '../core/block-adder.js';
 import { watchNewBlocks } from '../core/watcher.js';
-import { EDU_ITEM_FORM, WORK_ITEM_FORM } from '../core/profile-schema.js';
+import {
+  EDU_ITEM_FORM, WORK_ITEM_FORM, CERT_ITEM_FORM, PATENT_ITEM_FORM,
+  PAPER_ITEM_FORM, AWARD_ITEM_FORM, FAMILY_ITEM_FORM,
+} from '../core/profile-schema.js';
+import { GROUP_ARRAYS } from '../core/value.js';
 import { RUN_MSG, RES_MSG, FRAME_ID, relayToChildren } from '../core/messaging.js';
 
 const CSS = [
@@ -50,59 +54,42 @@ const FORM_GROUPS = [
     ['name', '姓名', 'text'],
     ['englishName', '英文名/拼音', 'text'],
     ['gender', '性别', 'select', ['', '男', '女']],
-    ['birthday', '出生年月', 'text', '如 2003-09'],
+    ['birthday', '出生日期', 'text', '如 2003-09-01'],
     ['nation', '民族', 'text'],
     ['politicalStatus', '政治面貌', 'select', ['', '中共党员', '中共预备党员', '共青团员', '民主党派', '群众']],
     ['maritalStatus', '婚姻状况', 'select', ['', '未婚', '已婚', '离异']],
+    ['idType', '证件类型', 'select', ['', '身份证', '护照', '军官证', '香港身份证', '澳门身份证', '台湾身份证', '台胞证', '其他']],
     ['idCard', '身份证号', 'text'],
     ['phone', '手机号', 'text'],
     ['email', '邮箱', 'text'],
     ['wechat', '微信号', 'text'],
     ['hometown', '籍贯', 'text'],
     ['hukou', '户口所在地', 'text'],
+    ['hukouType', '户口类型', 'text', '如 家庭户口 / 学校集体户口'],
     ['currentCity', '现居城市', 'text'],
     ['zipcode', '邮编', 'text'],
     ['address', '详细地址', 'text'],
+    ['health', '健康状况', 'select', ['', '健康', '良好', '有病史']],
+    ['gaokaoOrigin', '高考生源地', 'text', '如 浙江省'],
+    ['isFreshGraduate', '是否应届毕业生', 'select', ['', '是', '否']],
   ]],
   ['求职意向', [
     ['applyPosition', '意向岗位', 'text'],
     ['expectCity', '意向城市', 'text'],
     ['expectSalary', '期望薪资', 'text'],
-    ['availableDate', '到岗时间', 'text', '如 2027-07 / 一周内'],
+    ['availableDate', '到岗时间', 'text', '如 2027-07-01 / 一周内'],
+    ['jobType', '期望工作性质', 'select', ['', '全职', '兼职', '实习']],
+    ['adjust', '是否服从调剂', 'select', ['', '是', '否']],
     ['source', '获知渠道', 'text', '如 公司官网'],
+    ['referralCode', '内推码', 'text'],
     ['website', '个人网站/博客', 'text'],
     ['github', 'GitHub/开源', 'text'],
   ]],
-  ['教育经历 · 最高学历', [
-    ['school', '学校', 'text'],
-    ['college', '学院', 'text'],
-    ['major', '专业', 'text'],
-    ['degree', '学历', 'select', ['', '硕士', '博士', '本科', '大专']],
-    ['degreeLevel', '学位', 'select', ['', '学士', '硕士', '博士']],
-    ['schoolCity', '学校所在地', 'text'],
-    ['eduStart', '入学时间', 'text', '如 2025-09'],
-    ['eduEnd', '毕业时间', 'text', '如 2027-07'],
-    ['gpa', 'GPA/绩点', 'text'],
-    ['rank', '排名', 'text'],
-  ]],
-  ['教育经历 · 本科', [
-    ['bachelorSchool', '学校', 'text'],
-    ['bachelorCollege', '学院', 'text'],
-    ['bachelorMajor', '专业', 'text'],
-    ['bachelorDegreeLevel', '学位', 'select', ['', '学士', '硕士', '博士']],
-    ['bachelorStart', '入学时间', 'text', '如 2021-09'],
-    ['bachelorEnd', '毕业时间', 'text', '如 2025-07'],
-    ['bachelorGpa', 'GPA/绩点', 'text'],
-    ['bachelorRank', '排名', 'text'],
-  ]],
-  ['工作 / 实习经历', [
-    ['company', '公司', 'text'],
-    ['department', '部门', 'text'],
-    ['title', '职位', 'text'],
-    ['workCity', '工作城市', 'text'],
-    ['workStart', '开始时间', 'text', '如 2026-04'],
-    ['workEnd', '结束时间', 'text', '如 2026-09'],
-    ['workDesc', '工作内容描述', 'textarea'],
+  ['语言、技能与爱好', [
+    ['englishLevel', '英语水平', 'select', ['', '普通', '良好', '精通', '熟练']],
+    ['otherLanguages', '其他外语水平及成绩', 'text'],
+    ['itSkills', 'IT 技能掌握程度', 'text'],
+    ['hobbies', '个人爱好', 'text'],
   ]],
   ['其他常用长文本', [
     ['projectDesc', '项目经历描述', 'textarea'],
@@ -362,8 +349,13 @@ function renderEditor(bd) {
     bd.appendChild(grid);
   });
 
-  renderBlocks(bd, 'educations', '多段教育经历', '网页上的教育经历可以点「添加」加好几段时，在这里一段一行地填；留空就按上面「教育经历」里的字段填。', EDU_ITEM_FORM);
-  renderBlocks(bd, 'works', '多段工作 / 实习经历', '网页上的工作经历可以点「添加」加好几段时，在这里一段一行地填；留空就按上面「工作 / 实习经历」里的字段填。', WORK_ITEM_FORM);
+  renderBlocks(bd, 'educations', '教育经历', '一段一张卡片，按网页上的顺序排：网页上第一段教育经历填这里的第一张卡片。点「+ 加一段」可以再加。', EDU_ITEM_FORM);
+  renderBlocks(bd, 'works', '工作 / 实习经历', '一段一张卡片，顺序同上。', WORK_ITEM_FORM);
+  renderBlocks(bd, 'certificates', '证书', '一张卡片一项证书。', CERT_ITEM_FORM);
+  renderBlocks(bd, 'patents', '专利', '一张卡片一项专利。', PATENT_ITEM_FORM);
+  renderBlocks(bd, 'papers', '论文', '一张卡片一篇论文。', PAPER_ITEM_FORM);
+  renderBlocks(bd, 'awards', '奖励与荣誉', '一张卡片一项奖励。', AWARD_ITEM_FORM);
+  renderBlocks(bd, 'family', '家庭关系', '一张卡片一位家庭成员。', FAMILY_ITEM_FORM);
 
   bd.appendChild(el('h4', null, '补充规则（认不出来的字段写这里）'));
   const extraBox = el('div');
@@ -491,8 +483,8 @@ async function doFill(btn) {
   if (btn) { btn.disabled = true; btn.textContent = '正在填…'; }
   filling = true;
   if (settings.addMissingBlocks) {
-    await addMissingBlocks(profile, 'edu');
-    await addMissingBlocks(profile, 'work');
+    const groups = Object.keys(GROUP_ARRAYS);
+    for (let i = 0; i < groups.length; i += 1) await addMissingBlocks(profile, groups[i]);
   }
   const got = [];
   const onMsg = (ev) => {
@@ -542,21 +534,12 @@ function importFile() {
     const fr = new FileReader();
     fr.onload = () => {
       try {
-        const obj = JSON.parse(String(fr.result));
-        if (obj && obj.profiles && Object.keys(obj.profiles).length) {
-          data = obj;
-          if (!data.current || !data.profiles[data.current]) data.current = Object.keys(data.profiles)[0];
-        } else if (obj && typeof obj === 'object') {
-          data.profiles[data.current] = Object.assign({}, data.profiles[data.current], obj);
-        } else {
-          alert('这个文件里没读到资料');
-          return;
-        }
+        data = assertData(JSON.parse(String(fr.result)));
         saveData(data);
         lastReport = null;
         render();
       } catch (e) {
-        alert('文件读不出来，确认是 UTF-8 编码的 json：' + (e && e.message ? e.message : e));
+        alert('资料文件读不进去：' + (e && e.message ? e.message : e));
       }
     };
     fr.readAsText(f, 'utf-8');

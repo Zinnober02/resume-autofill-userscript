@@ -4,7 +4,14 @@ import assert from 'node:assert/strict';
 import { createPage, runFill, field } from './helpers/userscript-env.mjs';
 import { formatValue, splitDateTime } from '../src/core/value.js';
 
-const el = (type, placeholder) => ({ type, getAttribute: () => placeholder || null });
+const el = (type, placeholder, maxlength) => ({
+  type,
+  getAttribute: (name) => {
+    if (name === 'placeholder') return placeholder || null;
+    if (name === 'maxlength') return maxlength == null ? null : String(maxlength);
+    return null;
+  },
+});
 const OPTIONS = { onlyEmpty: true, autoConsent: false, highlight: false };
 
 test('splitDateTime 拆出年月日与时刻', () => {
@@ -36,6 +43,17 @@ const SEGMENT_PAGE = [
   '</div>',
   '</form></body></html>',
 ].join('');
+
+test('只收年月的控件按 placeholder、maxlength、字段名三种线索截断', () => {
+  assert.equal(formatValue(el('text', 'YYYY-MM'), '2003-09-15', '出生日期'), '2003-09');
+  assert.equal(formatValue(el('text', 'yyyy/mm'), '2003-09-15', '出生日期'), '2003/09');
+  assert.equal(formatValue(el('text', '年 月'), '2003-09-15', '出生日期'), '2003年09月');
+  assert.equal(formatValue(el('text', ''), '2003-09-15', '出生年月'), '2003-09');
+  assert.equal(formatValue(el('text', '', 7), '2003-09-15', '出生日期'), '2003-09');
+  assert.equal(formatValue(el('text', '', 10), '2003-09-15', '出生年月'), '2003-09');
+  assert.equal(formatValue(el('text', ''), '2003-09-15', '出生日期'), '2003-09-15');
+  assert.equal(formatValue(el('text', '年 月 日'), '2003-09-15', '出生日期'), '2003年09月15日');
+});
 
 test('年 / 月 / 日 三个下拉框一起填', async () => {
   const { dom, window } = await createPage(SEGMENT_PAGE);
@@ -124,7 +142,7 @@ test('组件库日期选择器：点开弹层后逐级选中日期', async () =>
   ].join('');
   const { dom, window } = await createPage(html);
   installDatePicker(window);
-  const report = await runFill(window, { eduEnd: '2027-07-15', extra: [] }, OPTIONS);
+  const report = await runFill(window, { educations: [{ eduEnd: '2027-07-15' }], extra: [] }, OPTIONS);
   assert.equal(field(dom, 'input[name="grad"]').value, '2027-07-15');
   assert.deepEqual(Array.from(report.manual), []);
 });

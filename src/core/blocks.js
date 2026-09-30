@@ -1,9 +1,9 @@
 // 经历区块的分段：兄弟块之间字段组合重复，就说明它们是两段经历
 import { labelText, attrText, isOurUI } from './dom.js';
 import { pickKey } from './rules.js';
-import { EDU_KEYS, WORK_KEYS } from './value.js';
+import { KEY_GROUPS } from './value.js';
 
-const KEYS_OF = { edu: EDU_KEYS, work: WORK_KEYS };
+const KEYS_OF = KEY_GROUPS;
 
 export function fieldKeyOf(el, type) {
   if (!el || !el.tagName) return null;

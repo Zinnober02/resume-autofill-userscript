@@ -1,19 +1,22 @@
 // 需要点「添加」才会出现编辑框的表单：按资料里的段数把区块补足
 import { deepQueryAll, isOurUI } from './dom.js';
 import { blockContainers } from './blocks.js';
+import { GROUP_ARRAYS } from './value.js';
 
 const ADD_RE = /添加|新增|再加|继续添加|增加一条|添加一条|add/i;
-const SECTION_RE = { edu: /教育|学历|院校|学校/, work: /工作|实习|职业/ };
+const SECTION_RE = {
+  edu: /教育|学历|院校|学校/,
+  work: /工作|实习|职业/,
+  cert: /证书|资格/,
+  patent: /专利/,
+  paper: /论文|期刊/,
+  award: /奖励|奖项|荣誉/,
+  family: /家庭|亲属/,
+};
 
 export function targetBlockCount(profile, type) {
-  const list = type === 'edu' ? profile.educations : profile.works;
-  if (Array.isArray(list) && list.length) return list.length;
-  if (type === 'edu') {
-    const hasBachelor = ['bachelorSchool', 'bachelorCollege', 'bachelorMajor', 'bachelorStart', 'bachelorEnd']
-      .some((k) => String(profile[k] || '').trim());
-    return hasBachelor ? 2 : 1;
-  }
-  return String(profile.company || profile.title || '').trim() ? 1 : 0;
+  const list = profile[GROUP_ARRAYS[type]];
+  return Array.isArray(list) ? list.length : 0;
 }
 
 function findAddButton(type) {

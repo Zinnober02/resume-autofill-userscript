@@ -2,7 +2,7 @@
 import { pickKey, norm } from './rules.js';
 import { deepQueryAll, labelText, attrText, visibleText, rowContainer, sectionContainer, fieldHint, visible, isOurUI } from './dom.js';
 import { setVal, bestOptionIndex, isCustomSelect, fillCustomSelect } from './form-control.js';
-import { EDU_KEYS, WORK_KEYS, DATE_KEYS, valueForField, matchExtra, formatValue, splitDateTime, FIELD_NAMES } from './value.js';
+import { groupOf, DATE_KEYS, valueForField, matchExtra, formatValue, splitDateTime, FIELD_NAMES } from './value.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
 import { blockIndexOf } from './blocks.js';
 
@@ -83,7 +83,7 @@ async function applyValue(el, key, value, options, profile, st) {
     return;
   }
 
-  const out = formatValue(el, value);
+  const out = formatValue(el, value, labelText(el));
   if (!out) {
     st.manual.push(name + '：这个控件要填具体时刻，资料里没有，请手动填写');
     return;
@@ -131,9 +131,9 @@ export async function runFill(profile, opts) {
   // 教育、工作经历可能有好几段，数出当前字段属于第几段
   const indexCache = new Map();
   const rowIndexOf = (el, key) => {
-    const type = EDU_KEYS[key] ? 'edu' : (WORK_KEYS[key] ? 'work' : '');
-    if (!type) return 1;
-    if (!indexCache.has(el)) indexCache.set(el, blockIndexOf(el, type));
+    const group = groupOf(key);
+    if (!group) return 1;
+    if (!indexCache.has(el)) indexCache.set(el, blockIndexOf(el, group));
     return indexCache.get(el);
   };
 
@@ -148,7 +148,7 @@ export async function runFill(profile, opts) {
   const fillSegment = (el, group, rowText) => {
     const rowKey = pickKey({ label: rowText, attr: '', hint: fieldHint(el), allowHint: true });
     if (!rowKey || !DATE_KEYS[rowKey]) return false;
-    const date = splitDateTime(valueForField(rowKey, profile, rowText, rowIndexOf(el, rowKey)));
+    const date = splitDateTime(valueForField(rowKey, profile, rowIndexOf(el, rowKey)));
     if (!date) return false;
     const name = FIELD_NAMES[rowKey] || rowKey;
     let written = 0;
@@ -216,7 +216,7 @@ export async function runFill(profile, opts) {
         });
       }
       if (!key) continue;
-      const want = norm(valueForField(key, profile, visibleText(rowContainer(sample), 160), 1));
+      const want = norm(valueForField(key, profile, 1));
       if (!want) continue;
       let hit = null;
       for (let k = 0; k < all.length; k += 1) {
@@ -255,13 +255,12 @@ export async function runFill(profile, opts) {
       continue;
     }
 
-    const value = direct ? key.slice(6) : valueForField(key, profile, rowText, rowIndexOf(el, key));
+    const value = direct ? key.slice(6) : valueForField(key, profile, rowIndexOf(el, key));
     if (!value) continue;
 
     const pair = pairedStart(el, key);
     if (pair && !alreadyFilled(pair.node)) {
-      const pairRow = visibleText(rowContainer(pair.node), 160);
-      const pairValue = valueForField(pair.key, profile, pairRow, rowIndexOf(pair.node, pair.key));
+      const pairValue = valueForField(pair.key, profile, rowIndexOf(pair.node, pair.key));
       if (pairValue) await applyValue(pair.node, pair.key, pairValue, options, profile, st);
     }
 

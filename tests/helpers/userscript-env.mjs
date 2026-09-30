@@ -11,8 +11,13 @@ export const RUN_MSG = '__resume_autofill_run__';
 export const RES_MSG = '__resume_autofill_result__';
 
 // 加载页面与脚本；GM_* 用内存里的键值对顶替
+// 资料结构要求几个数组都在，这里给测试用的资料补上空数组
 export function storageWith(profile) {
-  return { v: 1, current: '默认', profiles: { '默认': profile } };
+  const full = Object.assign(
+    { educations: [], works: [], certificates: [], patents: [], papers: [], awards: [], family: [], extra: [] },
+    profile,
+  );
+  return { v: 1, current: '默认', profiles: { '默认': full } };
 }
 
 export async function createPage(html, scriptPath, options) {

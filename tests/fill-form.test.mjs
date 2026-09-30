@@ -7,19 +7,13 @@ const PROFILE = {
   name: '张三',
   englishName: 'Zhang San',
   gender: '男',
-  birthday: '2003-09',
+  birthday: '2003-09-01',
   phone: '13800000000',
   email: 'zhangsan@example.com',
   applyPosition: 'AI应用工程师',
   expectCity: '杭州',
-  school: '示例大学',
-  college: '计算机学院',
-  major: '软件工程',
-  degree: '硕士',
-  gpa: '3.8',
-  company: '示例科技',
-  title: '后端开发实习生',
-  school: '',
+  educations: [{ school: '示例大学', college: '计算机学院', major: '软件工程', degree: '硕士', gpa: '3.8' }],
+  works: [{ company: '示例科技', title: '后端开发实习生' }],
   extra: [{ match: '期望岗位', value: 'AI应用工程师' }],
 };
 
@@ -83,15 +77,15 @@ test('关掉「只填空白字段」就会覆盖已有内容', async () => {
 test('补充规则能填上脚本不认识的字段', async () => {
   const html = PAGE.replace(
     '<div class="row"><span>推荐人</span><input name="referee"></div>',
-    '<div class="row"><span>是否服从调剂</span><input name="adjust"></div>',
+    '<div class="row"><span>意向事业部</span><input name="bu"></div>',
   );
   const { dom, window } = await createPage(html);
-  const report = await runFill(window, { ...PROFILE, extra: [{ match: '是否服从调剂', value: '是' }] }, OPTIONS);
-  assert.equal(field(dom, 'input[name="adjust"]').value, '是');
+  const report = await runFill(window, { ...PROFILE, extra: [{ match: '意向事业部', value: '云计算事业部' }] }, OPTIONS);
+  assert.equal(field(dom, 'input[name="bu"]').value, '云计算事业部');
   assert.equal(report.unknown.length, 0);
 });
 
-test('教育经历分两段时本科那一段取本科资料', async () => {
+test('教育经历分两段时按顺序取两段资料', async () => {
   const html = [
     '<!doctype html><html><body><form>',
     '<div class="edu-block"><h3>教育经历</h3><p>',
@@ -102,15 +96,15 @@ test('教育经历分两段时本科那一段取本科资料', async () => {
       + '写明网页上的字段文字和要填进去的内容，保存之后再点一次一键填充即可。',
     '</p>',
     '<div class="edu-item"><span>学校名称</span><input name="s1"><span>专业名称</span><input name="m1"></div>',
-    '<div class="edu-item"><span>本科学校名称</span><input name="s2"><span>本科专业名称</span><input name="m2"></div>',
+    '<div class="edu-item"><span>学校名称</span><input name="s2"><span>专业名称</span><input name="m2"></div>',
     '</div>',
     '</form></body></html>',
   ].join('');
   const profile = Object.assign({}, PROFILE, {
-    school: '示例大学',
-    major: '软件工程',
-    bachelorSchool: '示例学院',
-    bachelorMajor: '计算机科学与技术',
+    educations: [
+      { school: '示例大学', major: '软件工程' },
+      { school: '示例学院', major: '计算机科学与技术' },
+    ],
   });
   const { dom, window } = await createPage(html);
   await runFill(window, profile, OPTIONS);

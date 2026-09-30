@@ -13,7 +13,8 @@
 - 申请表放在 iframe 里时，主页面上的按钮会指挥子框架一起填。
 - 日期与时间：`type=date` / `month` / `time` / `datetime-local`、年 / 月 / 日 分开的下拉框、组件库的日期选择器都能填；填不进去的会列进「需要手动处理」。
 - 页面上新出现的编辑框自动填：点「添加」新增的经历区块、弹出的对话框。
-- 资料支持多段教育经历与工作经历，可以按段数自动点「添加」把区块补足。
+- 资料支持多段教育经历、工作经历、证书、专利、论文、奖励与家庭关系，可以按段数自动点「添加」把区块补足。
+- 只收年月的日期控件会自动截到月（`type=month`、`YYYY-MM` 提示、字段名带「年月」、`maxlength=7`），资料本身保持精确到日。
 - 填充结束后列出已填字段、需要手动处理的字段、没认出来的字段。
 
 ## 安装
@@ -46,7 +47,7 @@ https://raw.githubusercontent.com/Zinnober02/resume-autofill-userscript/main/dis
 | --- | --- |
 | `src/main.js` | 入口：判断页面是否像申请表，挂上按钮与菜单命令 |
 | `src/core/rules.js` | 字段识别规则，把网页上的标签文字映射成资料字段 |
-| `src/core/profile-schema.js` | 资料字段模板 |
+| `src/core/profile-schema.js` | 资料字段模板与各类卡片的字段定义 |
 | `src/core/dom.js` | DOM 查询与标签文字提取 |
 | `src/core/form-control.js` | 往输入框、下拉框、自定义下拉框里写值 |
 | `src/core/value.js` | 教育经历分段、日期格式、字段中文名 |
