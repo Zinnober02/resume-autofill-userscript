@@ -168,7 +168,7 @@ export const FIELD_NAMES = {
   name: '姓名', englishName: '英文名', gender: '性别', birthday: '出生日期', age: '年龄',
   nation: '民族', politicalStatus: '政治面貌', maritalStatus: '婚姻状况',
   idType: '证件类型', idCard: '身份证号',
-  phone: '手机号', email: '邮箱', wechat: '微信', hometown: '籍贯',
+  phoneCountry: '手机号国家 / 地区', phone: '手机号', email: '邮箱', wechat: '微信', hometown: '籍贯',
   hukou: '户口所在地', hukouType: '户口类型', currentCity: '现居城市', address: '地址', zipcode: '邮编',
   health: '健康状况', gaokaoOrigin: '高考生源地', isFreshGraduate: '是否应届毕业生',
   applyPosition: '意向岗位', expectCity: '意向城市', expectSalary: '期望薪资',

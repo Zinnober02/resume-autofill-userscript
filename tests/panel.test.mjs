@@ -33,9 +33,9 @@ test('编辑资料视图列出全部字段，保存后写进存储', async () =>
   shadow.querySelector('.pill').click();
   buttonByText(shadow, '编辑资料').click();
   const fields = shadow.querySelectorAll('.f');
-  assert.equal(fields.length, 40);
+  assert.equal(fields.length, 41);
   const labels = Array.from(shadow.querySelectorAll('.f label')).map((n) => n.textContent);
-  for (const name of ['姓名', '手机号', '邮箱', '证件类型', '健康状况', '高考生源地', '意向岗位', '是否服从调剂', '英语水平', '与本人关系', '自我评价']) {
+  for (const name of ['姓名', '手机号国家 / 地区', '手机号', '邮箱', '证件类型', '健康状况', '高考生源地', '意向岗位', '是否服从调剂', '英语水平', '与本人关系', '自我评价']) {
     assert.ok(labels.includes(name), '编辑视图缺少字段：' + name);
   }
   const titles = Array.from(shadow.querySelectorAll('h4')).map((n) => n.textContent);
@@ -60,7 +60,7 @@ test('教育经历按卡片增删，保存后写进 educations 数组', async ()
   buttonByText(shadow, '+ 加一段').click();
   const blocks = shadow.querySelectorAll('.block');
   assert.equal(blocks.length, 1);
-  assert.equal(shadow.querySelectorAll('.f').length, 40 + 9);
+  assert.equal(shadow.querySelectorAll('.f').length, 41 + 9);
   const school = blocks[0].querySelector('input');
   school.value = '示例大学';
   school.dispatchEvent(new window.Event('input', { bubbles: true }));
@@ -80,7 +80,8 @@ test('日期用日期控件，省市区用三级联动', async () => {
   const regions = shadow.querySelectorAll('.region');
   assert.equal(regions.length, 4, '籍贯、户口所在地、现居城市、高考生源地应该是三级联动');
   const selects = regions[0].querySelectorAll('select');
-  assert.equal(selects.length, 3);
+  assert.equal(selects.length, 2, '省与市是下拉，区县直接填');
+  assert.ok(regions[0].querySelector('input[placeholder="区 / 县"]'), '区县应该是输入框');
   assert.ok(selects[0].options.length > 30, '省下拉应该有全国省份');
   assert.equal(selects[1].options.length, 1, '没选省之前市是空的');
   selects[0].value = selects[0].options[1].value;

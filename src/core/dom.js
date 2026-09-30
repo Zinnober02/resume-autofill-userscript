@@ -89,8 +89,17 @@ export function labelText(el) {
       if (n.querySelector && n.querySelector('input, select, textarea')) return '';
       return visibleText(n, 30).trim().slice(0, 30);
     };
-    push(meaningfulLabel(likeLabel(el.previousElementSibling)));
-    if (!parts.length && el.parentElement) push(meaningfulLabel(likeLabel(el.parentElement.previousElementSibling)));
+    // 往前多看几个兄弟：同一行里控件前面可能还隔着别的控件（手机号前面就有个国家代码下拉）
+    let node = el.previousElementSibling;
+    for (let i = 0; node && i < 4 && !parts.length; i += 1) {
+      push(meaningfulLabel(likeLabel(node)));
+      node = node.previousElementSibling;
+    }
+    let up = el.parentElement ? el.parentElement.previousElementSibling : null;
+    for (let i = 0; up && i < 4 && !parts.length; i += 1) {
+      push(meaningfulLabel(likeLabel(up)));
+      up = up.previousElementSibling;
+    }
   }
   push(meaningfulLabel(el.getAttribute('title')));
   push(meaningfulLabel(el.getAttribute('placeholder')));

@@ -69,6 +69,23 @@ const SEARCH_PAGE = [
   '</form></body></html>',
 ].join('');
 
+const PHONE_PAGE = [
+  '<!doctype html><html><body><form>',
+  '<div class="row"><span>移动电话</span>',
+  '<select name="country"><option value="">请选择</option><option value="86">中国大陆 +86</option><option value="852">中国香港 +852</option></select>',
+  '<input name="number">',
+  '</div>',
+  '</form></body></html>',
+].join('');
+
+test('手机号前面的国家 / 地区代码下拉会被选中', async () => {
+  const { dom, window } = await createPage(PHONE_PAGE);
+  const report = await runFill(window, { phone: '13800000000', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="country"]').value, '86');
+  assert.equal(field(dom, 'input[name="number"]').value, '13800000000');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
 test('可搜索下拉会点开、输入关键词、再点候选', async () => {
   const { dom, window } = await createPage(SEARCH_PAGE);
   installSearchSelect(window);

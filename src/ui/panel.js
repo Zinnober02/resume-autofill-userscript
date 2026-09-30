@@ -64,6 +64,7 @@ const FORM_GROUPS = [
     ['maritalStatus', '婚姻状况', 'select', ['', '未婚', '已婚', '离异']],
     ['idType', '证件类型', 'select', ['', '身份证', '护照', '军官证', '香港身份证', '澳门身份证', '台湾身份证', '台胞证', '其他']],
     ['idCard', '身份证号', 'text'],
+    ['phoneCountry', '手机号国家 / 地区', 'select', ['', '中国大陆', '中国香港', '中国澳门', '中国台湾', '其他']],
     ['phone', '手机号', 'text'],
     ['email', '邮箱', 'text'],
     ['wechat', '微信号', 'text'],
@@ -141,11 +142,15 @@ function regionPicker(value, setValue) {
   };
   const provSel = makeSelect('省');
   const citySel = makeSelect('市');
-  const areaSel = makeSelect('区 / 县');
   const detail = el('input');
   detail.type = 'text';
   detail.placeholder = '详细地址（可选）';
   detail.value = parsed.detail || '';
+  // 区县不做下拉，直接填，避免数据里对不上
+  const areaInput = el('input');
+  areaInput.type = 'text';
+  areaInput.placeholder = '区 / 县';
+  areaInput.value = parsed.district || '';
 
   const codeOf = (map, name) => Object.keys(map).find((code) => map[code] === name) || '';
   const fillSelect = (sel, map, placeholder, current) => {
@@ -163,27 +168,21 @@ function regionPicker(value, setValue) {
   const emit = () => {
     const province = provSel.value ? REGIONS['86'][provSel.value] : '';
     const city = citySel.value ? (REGIONS[provSel.value] || {})[citySel.value] || '' : '';
-    const district = areaSel.value ? (REGIONS[citySel.value] || {})[areaSel.value] || '' : '';
-    setValue([province, city, district].join('') + detail.value.trim());
+    setValue([province, city].join('') + areaInput.value.trim() + detail.value.trim());
   };
   const provinces = REGIONS['86'] || {};
   fillSelect(provSel, provinces, '省', parsed.province);
   fillSelect(citySel, REGIONS[provSel.value] || {}, '市', parsed.city);
-  fillSelect(areaSel, REGIONS[citySel.value] || {}, '区 / 县', parsed.district);
   provSel.onchange = () => {
     fillSelect(citySel, REGIONS[provSel.value] || {}, '市', '');
-    fillSelect(areaSel, REGIONS[citySel.value] || {}, '区 / 县', '');
     emit();
   };
-  citySel.onchange = () => {
-    fillSelect(areaSel, REGIONS[citySel.value] || {}, '区 / 县', '');
-    emit();
-  };
-  areaSel.onchange = emit;
+  citySel.onchange = emit;
+  areaInput.oninput = emit;
   detail.oninput = emit;
   box.appendChild(provSel);
   box.appendChild(citySel);
-  box.appendChild(areaSel);
+  box.appendChild(areaInput);
   box.appendChild(detail);
   return box;
 }

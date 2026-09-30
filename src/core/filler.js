@@ -52,9 +52,31 @@ export function highlight(el) {
   } catch (e) { /* 忽略 */ }
 }
 
+// 手机号前面常常先有一个国家 / 地区代码下拉，电信上就是这样
+function isCountrySelect(el) {
+  const text = Array.from(el.options).map((o) => o.textContent).join(' ');
+  if (!text) return false;
+  return /中国大陆|中国香港|中国澳门|中国台湾|\+86|国家和地区|国家\/地区/.test(text);
+}
+
 // 往一个已经识别出字段的控件里写值；选不中或格式不被接受时记进「需要手动处理」
 async function applyValue(el, key, value, options, profile, st) {
   const name = FIELD_NAMES[key] || '自定义';
+  if (key === 'phone' && el.tagName === 'SELECT' && isCountrySelect(el)) {
+    const want = String(profile.phoneCountry || '中国大陆');
+    let idx = bestOptionIndex(el, want, false);
+    if (idx < 0 && want === '中国大陆') idx = bestOptionIndex(el, '+86', false);
+    if (idx >= 0) {
+      const text = String(el.options[idx].text).trim();
+      setVal(el, el.options[idx].value);
+      st.count += 1;
+      st.filled.push(name + ' → ' + text);
+      if (options.highlight) highlight(el);
+    } else {
+      st.manual.push(name + '：国家 / 地区代码没有匹配项，请手动选');
+    }
+    return;
+  }
   if (el.tagName === 'SELECT') {
     const preferEnrolled = key === 'degree' && /在读|应届/.test(String(profile.degreeNote || '在读'));
     const idx = bestOptionIndex(el, value, preferEnrolled);
@@ -209,15 +231,7 @@ export async function runFill(profile, opts) {
   };
 
   // 年 / 月 / 日 分开的下拉框或输入框：整组一起写
-  const fillSegment = (el, group, rowText) => {
-    const rowKey = pickKey({
-      label: rowText,
-      attr: '',
-      block: sectionBlockType(el),
-      hint: fieldHint(el),
-      allowHint: true,
-    });
-    if (!rowKey || !DATE_KEYS[rowKey]) return false;
+  const fillSegment = (el, group, rowKey) => {
     const date = splitDateTime(valueForField(rowKey, profile, rowIndexOf(el, rowKey)));
     if (!date) return false;
     const name = FIELD_NAMES[rowKey] || rowKey;
@@ -310,32 +324,24 @@ export async function runFill(profile, opts) {
     const attr = attrText(el);
     const rowText = visibleText(rowContainer(el), 160);
     const block = sectionBlockType(el);
+
+    // 分段的控件（年 / 月 / 日、省 / 市 / 区）要整组一起处理：
+    // 单个控件只知道自己的角色，资料里的完整值要在组内拆开
+    const rowKey = pickKey({ label: rowText, attr: '', block, hint: fieldHint(el), allowHint: true });
+    if (rowKey && DATE_KEYS[rowKey]) {
+      const segGroup = segmentOf(el);
+      if (segGroup && fillSegment(el, segGroup, rowKey)) continue;
+    }
+    if (rowKey && ADDRESS_KEYS[rowKey]) {
+      const addrGroup = addressGroupOf(el);
+      if (addrGroup && await fillAddressGroup(addrGroup, rowKey)) continue;
+    }
+
     let key = pickKey({ label, attr, block, hint: fieldHint(el), allowHint: !label && !attr });
     let direct = false;
     if (!key) {
       const ex = matchExtra(profile, label, attr, rowText);
       if (ex) { key = ex; direct = true; }
-    }
-    if (!key) {
-      const group = segmentOf(el);
-      if (group && fillSegment(el, group, rowText)) continue;
-    }
-    if (ADDRESS_KEYS[key]) {
-      const addrGroup = addressGroupOf(el);
-      if (addrGroup && await fillAddressGroup(addrGroup, key)) continue;
-    }
-    if (!key) {
-      const addrGroup = addressGroupOf(el);
-      if (addrGroup) {
-        const rowKey = pickKey({
-          label: rowText,
-          attr: '',
-          block,
-          hint: fieldHint(el),
-          allowHint: true,
-        });
-        if (rowKey && ADDRESS_KEYS[rowKey] && await fillAddressGroup(addrGroup, rowKey)) continue;
-      }
     }
 
     if (!key) {

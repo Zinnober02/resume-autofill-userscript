@@ -11,6 +11,7 @@ export const SEED_PROFILES = {
     maritalStatus: '',
     idType: '',
     idCard: '',
+    phoneCountry: '中国大陆',
     phone: '',
     email: '',
     wechat: '',

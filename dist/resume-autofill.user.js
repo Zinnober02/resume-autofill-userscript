@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.6.0
+// @version      1.7.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -397,6 +397,7 @@
     maritalStatus: "婚姻状况",
     idType: "证件类型",
     idCard: "身份证号",
+    phoneCountry: "手机号国家 / 地区",
     phone: "手机号",
     email: "邮箱",
     wechat: "微信",
@@ -575,8 +576,16 @@
         if (n.querySelector && n.querySelector("input, select, textarea")) return "";
         return visibleText(n, 30).trim().slice(0, 30);
       };
-      push(meaningfulLabel(likeLabel(el2.previousElementSibling)));
-      if (!parts.length && el2.parentElement) push(meaningfulLabel(likeLabel(el2.parentElement.previousElementSibling)));
+      let node = el2.previousElementSibling;
+      for (let i = 0; node && i < 4 && !parts.length; i += 1) {
+        push(meaningfulLabel(likeLabel(node)));
+        node = node.previousElementSibling;
+      }
+      let up = el2.parentElement ? el2.parentElement.previousElementSibling : null;
+      for (let i = 0; up && i < 4 && !parts.length; i += 1) {
+        push(meaningfulLabel(likeLabel(up)));
+        up = up.previousElementSibling;
+      }
     }
     push(meaningfulLabel(el2.getAttribute("title")));
     push(meaningfulLabel(el2.getAttribute("placeholder")));
@@ -723,6 +732,7 @@
       maritalStatus: "",
       idType: "",
       idCard: "",
+      phoneCountry: "中国大陆",
       phone: "",
       email: "",
       wechat: "",
@@ -1434,8 +1444,28 @@
     } catch (e) {
     }
   }
+  function isCountrySelect(el2) {
+    const text = Array.from(el2.options).map((o) => o.textContent).join(" ");
+    if (!text) return false;
+    return /中国大陆|中国香港|中国澳门|中国台湾|\+86|国家和地区|国家\/地区/.test(text);
+  }
   async function applyValue(el2, key, value, options, profile, st) {
     const name = FIELD_NAMES[key] || "自定义";
+    if (key === "phone" && el2.tagName === "SELECT" && isCountrySelect(el2)) {
+      const want = String(profile.phoneCountry || "中国大陆");
+      let idx = bestOptionIndex(el2, want, false);
+      if (idx < 0 && want === "中国大陆") idx = bestOptionIndex(el2, "+86", false);
+      if (idx >= 0) {
+        const text = String(el2.options[idx].text).trim();
+        setVal(el2, el2.options[idx].value);
+        st.count += 1;
+        st.filled.push(name + " → " + text);
+        if (options.highlight) highlight(el2);
+      } else {
+        st.manual.push(name + "：国家 / 地区代码没有匹配项，请手动选");
+      }
+      return;
+    }
     if (el2.tagName === "SELECT") {
       const preferEnrolled = key === "degree" && /在读|应届/.test(String(profile.degreeNote || "在读"));
       const idx = bestOptionIndex(el2, value, preferEnrolled);
@@ -1574,15 +1604,7 @@
       if (res.blocked) st.manual.push(name + "：省 / 市 / 区控件没有能选中的值，请手动选");
       return res.written > 0 || res.blocked > 0;
     };
-    const fillSegment = (el2, group, rowText) => {
-      const rowKey = pickKey({
-        label: rowText,
-        attr: "",
-        block: sectionBlockType(el2),
-        hint: fieldHint(el2),
-        allowHint: true
-      });
-      if (!rowKey || !DATE_KEYS[rowKey]) return false;
+    const fillSegment = (el2, group, rowKey) => {
       const date = splitDateTime(valueForField(rowKey, profile, rowIndexOf(el2, rowKey)));
       if (!date) return false;
       const name = FIELD_NAMES[rowKey] || rowKey;
@@ -1672,6 +1694,15 @@
       const attr = attrText(el2);
       const rowText = visibleText(rowContainer(el2), 160);
       const block = sectionBlockType(el2);
+      const rowKey = pickKey({ label: rowText, attr: "", block, hint: fieldHint(el2), allowHint: true });
+      if (rowKey && DATE_KEYS[rowKey]) {
+        const segGroup = segmentOf(el2);
+        if (segGroup && fillSegment(el2, segGroup, rowKey)) continue;
+      }
+      if (rowKey && ADDRESS_KEYS[rowKey]) {
+        const addrGroup = addressGroupOf(el2);
+        if (addrGroup && await fillAddressGroup(addrGroup, rowKey)) continue;
+      }
       let key = pickKey({ label, attr, block, hint: fieldHint(el2), allowHint: !label && !attr });
       let direct = false;
       if (!key) {
@@ -1679,27 +1710,6 @@
         if (ex) {
           key = ex;
           direct = true;
-        }
-      }
-      if (!key) {
-        const group = segmentOf(el2);
-        if (group && fillSegment(el2, group, rowText)) continue;
-      }
-      if (ADDRESS_KEYS[key]) {
-        const addrGroup = addressGroupOf(el2);
-        if (addrGroup && await fillAddressGroup(addrGroup, key)) continue;
-      }
-      if (!key) {
-        const addrGroup = addressGroupOf(el2);
-        if (addrGroup) {
-          const rowKey = pickKey({
-            label: rowText,
-            attr: "",
-            block,
-            hint: fieldHint(el2),
-            allowHint: true
-          });
-          if (rowKey && ADDRESS_KEYS[rowKey] && await fillAddressGroup(addrGroup, rowKey)) continue;
         }
       }
       if (!key) {
@@ -1959,6 +1969,7 @@
       ["maritalStatus", "婚姻状况", "select", ["", "未婚", "已婚", "离异"]],
       ["idType", "证件类型", "select", ["", "身份证", "护照", "军官证", "香港身份证", "澳门身份证", "台湾身份证", "台胞证", "其他"]],
       ["idCard", "身份证号", "text"],
+      ["phoneCountry", "手机号国家 / 地区", "select", ["", "中国大陆", "中国香港", "中国澳门", "中国台湾", "其他"]],
       ["phone", "手机号", "text"],
       ["email", "邮箱", "text"],
       ["wechat", "微信号", "text"],
@@ -2031,11 +2042,14 @@
     };
     const provSel = makeSelect("省");
     const citySel = makeSelect("市");
-    const areaSel = makeSelect("区 / 县");
     const detail = el("input");
     detail.type = "text";
     detail.placeholder = "详细地址（可选）";
     detail.value = parsed.detail || "";
+    const areaInput = el("input");
+    areaInput.type = "text";
+    areaInput.placeholder = "区 / 县";
+    areaInput.value = parsed.district || "";
     const codeOf = (map, name) => Object.keys(map).find((code) => map[code] === name) || "";
     const fillSelect = (sel, map, placeholder, current) => {
       sel.innerHTML = "";
@@ -2052,27 +2066,21 @@
     const emit = () => {
       const province = provSel.value ? REGIONS["86"][provSel.value] : "";
       const city = citySel.value ? (REGIONS[provSel.value] || {})[citySel.value] || "" : "";
-      const district = areaSel.value ? (REGIONS[citySel.value] || {})[areaSel.value] || "" : "";
-      setValue([province, city, district].join("") + detail.value.trim());
+      setValue([province, city].join("") + areaInput.value.trim() + detail.value.trim());
     };
     const provinces = REGIONS["86"] || {};
     fillSelect(provSel, provinces, "省", parsed.province);
     fillSelect(citySel, REGIONS[provSel.value] || {}, "市", parsed.city);
-    fillSelect(areaSel, REGIONS[citySel.value] || {}, "区 / 县", parsed.district);
     provSel.onchange = () => {
       fillSelect(citySel, REGIONS[provSel.value] || {}, "市", "");
-      fillSelect(areaSel, REGIONS[citySel.value] || {}, "区 / 县", "");
       emit();
     };
-    citySel.onchange = () => {
-      fillSelect(areaSel, REGIONS[citySel.value] || {}, "区 / 县", "");
-      emit();
-    };
-    areaSel.onchange = emit;
+    citySel.onchange = emit;
+    areaInput.oninput = emit;
     detail.oninput = emit;
     box.appendChild(provSel);
     box.appendChild(citySel);
-    box.appendChild(areaSel);
+    box.appendChild(areaInput);
     box.appendChild(detail);
     return box;
   }
