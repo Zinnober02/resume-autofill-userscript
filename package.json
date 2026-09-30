@@ -9,9 +9,12 @@
     "url": "git+https://github.com/Zinnober02/resume-autofill-userscript.git"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test \"tests/**/*.test.mjs\"",
+    "test": "node --test tests/",
     "check": "npm run build && node --test tests/"
   },
   "devDependencies": {

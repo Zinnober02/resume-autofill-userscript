@@ -68,6 +68,8 @@ https://raw.githubusercontent.com/Zinnober02/resume-autofill-userscript/main/dis
 
 ## 开发
 
+需要 Node 26 或更新版本（`package.json` 里的 `engines` 与 `.npmrc` 里的 `engine-strict` 会在版本不符时直接报错）。
+
 ```bash
 npm install
 npm run build   # 生成 dist/resume-autofill.user.js
