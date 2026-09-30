@@ -1,3 +1,6 @@
 node_modules/
 .scratch/
 *.log
+
+# 个人资料，含联系方式，不要提交
+我的资料.json
