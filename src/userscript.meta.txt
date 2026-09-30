@@ -1,0 +1,21 @@
+// ==UserScript==
+// @name         简历自动填充助手
+// @name:en      Resume Autofill Helper
+// @namespace    local.resume.autofill
+// @version      {{VERSION}}
+// @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
+// @description:en  Fill job application forms with your saved profile in one click.
+// @match        *://*/*
+// @exclude      *://mail.google.com/*
+// @exclude      *://*.alipay.com/*
+// @exclude      *://*.icbc.com.cn/*
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @run-at       document-idle
+// @homepageURL  {{REPOSITORY_URL}}
+// @supportURL   {{REPOSITORY_URL}}/issues
+// @downloadURL  {{RAW_URL}}
+// @updateURL    {{RAW_URL}}
+// @license      MIT
+// ==/UserScript==
