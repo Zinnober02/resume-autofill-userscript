@@ -48,8 +48,22 @@ function repeatedLevel(el, type) {
       // 两个块里出现同一个字段，说明它们是重复的两段；只是字段各不相同的，是同一段分成几行
       const sigs = blocks.map((b) => fieldsOf(b, type).map((n) => fieldKeyOf(n, type)));
       for (let i = 0; i < sigs.length; i += 1) {
+        // 一段经历里字段通常不止一个。只凭「有一个字段相同」就把每行当成一段，
+        // 会把同一段经历拆成好几段（移动那个页面每个字段各占一个 dl 就是这样）
+        if (sigs[i].length < 2) continue;
+        // 块里得有至少两个不同的字段。同一批单选框被认成同一个 key 时，
+        // 一行一个字段的表格会看着像「重复的经历块」
+        const distinct = {};
+        sigs[i].forEach((k) => { distinct[k] = 1; });
+        if (Object.keys(distinct).length < 2) continue;
         for (let j = i + 1; j < sigs.length; j += 1) {
-          if (sigs[i].some((k) => sigs[j].indexOf(k) >= 0)) return { node, blocks };
+          if (sigs[i].length !== sigs[j].length) continue;
+          if (!sigs[i].every((k) => sigs[j].indexOf(k) >= 0)) continue;
+          // 重复出现的经历块，标签与 class 通常也一致。
+          // 只比字段组合的话，一行一个字段的表格会被误当成多段经历
+          if (blocks[i].tagName !== blocks[j].tagName) continue;
+          if (String(blocks[i].className || '') !== String(blocks[j].className || '')) continue;
+          return { node, blocks };
         }
       }
     }

@@ -2,8 +2,8 @@
 import { norm } from './rules.js';
 
 export const EDU_KEYS = {
-  school: 1, college: 1, major: 1, degree: 1, degreeLevel: 1,
-  eduStart: 1, eduEnd: 1, gpa: 1, rank: 1,
+  school: 1, college: 1, major: 1, researchArea: 1, majorCourses: 1, majorDesc: 1,
+  degree: 1, degreeLevel: 1, eduStart: 1, eduEnd: 1, gpa: 1, rank: 1,
 };
 
 export const WORK_KEYS = {

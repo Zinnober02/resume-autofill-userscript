@@ -122,7 +122,10 @@ export const RULES = [
   { key: 'currentCity', re: /现居城市|现居住地|现居地|目前所在城市|所在城市|所在地区|目前所在地|currentcity|currentlocation|cityofresidence|现居/, neg: /期望|意向|学校|院校|就读/ },
 
   { key: 'school', re: /毕业院校|毕业学校|就读院校|就读学校|学校名称|院校名称|学校全称|院校全称|^学校$|^院校$|university|schoolname|institution|almamater/, neg: /高中|中学|初中|小学|学校地址|学校所在地|学校性质|学校类型|学校邮箱|学校电话|学院|院系/ },
-  { key: 'major', re: /所学专业|专业名称|^专业$|专业|major|fieldofstudy|discipline/, neg: /专业方向|专业类别|专业排名|转专业|专业技能|专业资格/ },
+  { key: 'majorCourses', re: /专业课程|主修课程|主要课程|课程名称|courses/, neg: /课程成绩|成绩/ },
+  { key: 'majorDesc', re: /专业描述|专业简介|专业介绍|专业说明/, neg: null },
+  { key: 'researchArea', re: /研究方向|研究领域|研究课题|researcharea|researchdirection/, neg: null },
+  { key: 'major', re: /所学专业|专业名称|^专业$|专业|major|fieldofstudy|discipline/, neg: /专业方向|专业类别|专业排名|转专业|专业技能|专业资格|专业课程|专业描述|专业简介|专业介绍|专业说明/ },
   { key: 'college', re: /学院|院系|系别|faculty|college|schoolof/, neg: /继续教育|成人教育/ },
   { key: 'schooling', re: /学制|修业年限/ },
   { key: 'educationType', re: /受教育类型|培养方式|学习形式|教育形式|培养类型/ },

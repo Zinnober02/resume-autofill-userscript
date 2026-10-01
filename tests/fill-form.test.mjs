@@ -128,3 +128,20 @@ test('提示文字写在 value 里的表单：标签在 dt 里，字段一样能
   assert.equal(field(dom, '#mail').value, 'a@b.com');
   assert.deepEqual(Array.from(report.manual), []);
 });
+test('老页面写法：文字和控件挤在同一个容器里', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<table><tr><td>姓名<input id="n1" type="text" value="请输入姓名"></td></tr>',
+    '<tr><td>手机号码：<input id="n2" type="text"></td></tr></table>',
+    '<div>电子邮箱：<input id="n3" type="text"></div>',
+    '<p><b>毕业院校</b><input id="n4" type="text"></p>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { name: '朱时锋', phone: '17703847052', email: 'a@b.com', educations: [{ school: '南京大学' }], extra: [] }, OPTIONS);
+  assert.equal(field(dom, '#n1').value, '朱时锋');
+  assert.equal(field(dom, '#n2').value, '17703847052');
+  assert.equal(field(dom, '#n3').value, 'a@b.com');
+  assert.equal(field(dom, '#n4').value, '南京大学');
+  assert.deepEqual(Array.from(report.manual), []);
+});

@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.11.1
+// @version      1.11.2
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -130,7 +130,10 @@
     { key: "address", re: /通讯地址|通信地址|联系地址|现住址|现居地址|居住地址|家庭住址|详细地址|街道地址|收件地址|address|street/, neg: /邮箱|邮件|email|网址|url|户口|户籍|籍贯|学校地址|公司地址/ },
     { key: "currentCity", re: /现居城市|现居住地|现居地|目前所在城市|所在城市|所在地区|目前所在地|currentcity|currentlocation|cityofresidence|现居/, neg: /期望|意向|学校|院校|就读/ },
     { key: "school", re: /毕业院校|毕业学校|就读院校|就读学校|学校名称|院校名称|学校全称|院校全称|^学校$|^院校$|university|schoolname|institution|almamater/, neg: /高中|中学|初中|小学|学校地址|学校所在地|学校性质|学校类型|学校邮箱|学校电话|学院|院系/ },
-    { key: "major", re: /所学专业|专业名称|^专业$|专业|major|fieldofstudy|discipline/, neg: /专业方向|专业类别|专业排名|转专业|专业技能|专业资格/ },
+    { key: "majorCourses", re: /专业课程|主修课程|主要课程|课程名称|courses/, neg: /课程成绩|成绩/ },
+    { key: "majorDesc", re: /专业描述|专业简介|专业介绍|专业说明/, neg: null },
+    { key: "researchArea", re: /研究方向|研究领域|研究课题|researcharea|researchdirection/, neg: null },
+    { key: "major", re: /所学专业|专业名称|^专业$|专业|major|fieldofstudy|discipline/, neg: /专业方向|专业类别|专业排名|转专业|专业技能|专业资格|专业课程|专业描述|专业简介|专业介绍|专业说明/ },
     { key: "college", re: /学院|院系|系别|faculty|college|schoolof/, neg: /继续教育|成人教育/ },
     { key: "schooling", re: /学制|修业年限/ },
     { key: "educationType", re: /受教育类型|培养方式|学习形式|教育形式|培养类型/ },
@@ -212,6 +215,9 @@
     school: 1,
     college: 1,
     major: 1,
+    researchArea: 1,
+    majorCourses: 1,
+    majorDesc: 1,
     degree: 1,
     degreeLevel: 1,
     eduStart: 1,
@@ -586,6 +592,23 @@
         push(meaningfulLabel(likeLabel(up)));
         up = up.previousElementSibling;
       }
+      if (!parts.length && el2.parentElement) {
+        let text = "";
+        const kids = el2.parentElement.childNodes;
+        for (let i = 0; i < kids.length; i += 1) {
+          const node2 = kids[i];
+          if (node2 === el2) break;
+          if (node2.nodeType === 3) {
+            text += " " + node2.nodeValue;
+            continue;
+          }
+          if (node2.nodeType !== 1) continue;
+          const isField = node2.tagName === "INPUT" || node2.tagName === "SELECT" || node2.tagName === "TEXTAREA";
+          if (isField || node2.querySelector && node2.querySelector("input, select, textarea")) break;
+          text += " " + visibleText(node2, 30);
+        }
+        push(meaningfulLabel(text.trim()));
+      }
     }
     push(meaningfulLabel(el2.getAttribute("title")));
     push(meaningfulLabel(el2.getAttribute("placeholder")));
@@ -786,6 +809,9 @@
     ["school", "学校", "text"],
     ["college", "学院", "text"],
     ["major", "专业", "text"],
+    ["researchArea", "研究方向", "text"],
+    ["majorCourses", "主修课程", "text"],
+    ["majorDesc", "专业描述", "textarea"],
     ["degree", "学历", "select", ["", "硕士", "博士", "本科", "大专"]],
     ["degreeLevel", "学位", "select", ["", "学士", "硕士", "博士"]],
     ["eduStart", "入学时间", "date"],
@@ -2332,8 +2358,18 @@
       if (blocks.length > 1) {
         const sigs = blocks.map((b) => fieldsOf(b, type).map((n) => fieldKeyOf(n, type)));
         for (let i = 0; i < sigs.length; i += 1) {
+          if (sigs[i].length < 2) continue;
+          const distinct = {};
+          sigs[i].forEach((k) => {
+            distinct[k] = 1;
+          });
+          if (Object.keys(distinct).length < 2) continue;
           for (let j = i + 1; j < sigs.length; j += 1) {
-            if (sigs[i].some((k) => sigs[j].indexOf(k) >= 0)) return { node, blocks };
+            if (sigs[i].length !== sigs[j].length) continue;
+            if (!sigs[i].every((k) => sigs[j].indexOf(k) >= 0)) continue;
+            if (blocks[i].tagName !== blocks[j].tagName) continue;
+            if (String(blocks[i].className || "") !== String(blocks[j].className || "")) continue;
+            return { node, blocks };
           }
         }
       }

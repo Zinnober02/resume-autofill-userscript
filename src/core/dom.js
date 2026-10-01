@@ -103,6 +103,25 @@ export function labelText(el) {
       push(meaningfulLabel(likeLabel(up)));
       up = up.previousElementSibling;
     }
+    // 文字和控件挤在同一个容器里：<td>姓名<input></td>、<div>手机号码：<input></div>。
+    // 取控件前面那一段，遇到别的控件就停——那说明文字是给别人的
+    if (!parts.length && el.parentElement) {
+      let text = '';
+      const kids = el.parentElement.childNodes;
+      for (let i = 0; i < kids.length; i += 1) {
+        const node = kids[i];
+        if (node === el) break;
+        if (node.nodeType === 3) {
+          text += ' ' + node.nodeValue;
+          continue;
+        }
+        if (node.nodeType !== 1) continue;
+        const isField = node.tagName === 'INPUT' || node.tagName === 'SELECT' || node.tagName === 'TEXTAREA';
+        if (isField || (node.querySelector && node.querySelector('input, select, textarea'))) break;
+        text += ' ' + visibleText(node, 30);
+      }
+      push(meaningfulLabel(text.trim()));
+    }
   }
   push(meaningfulLabel(el.getAttribute('title')));
   push(meaningfulLabel(el.getAttribute('placeholder')));
