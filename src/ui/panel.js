@@ -398,6 +398,12 @@ function renderMain(bd) {
     const s1 = el('div', 'status');
     s1.innerHTML = '<span class="ok">已填好 ' + lastReport.count + ' 项</span>';
     box.appendChild(s1);
+    if (!lastReport.count && lastReport.skipped) {
+      box.appendChild(el('div', 'tip', '页面上有 ' + lastReport.skipped + ' 个字段本来就有内容，按「只填空白字段」这一项跳过了。想覆盖就把那个勾去掉再点一次。'));
+    }
+    if (!lastReport.count && !lastReport.skipped && !lastReport.unknown.length) {
+      box.appendChild(el('div', 'tip', '这一页没有找到能填的字段：表格可能在别的框架里，也可能字段名没能认出来（换一页再点一次，或者打开需要手动处理的那些看看）。'));
+    }
     if (lastReport.filled.length) box.appendChild(el('div', 'list', lastReport.filled.join('　·　')));
     if (lastReport.manual.length) {
       box.appendChild(el('div', 'status warn', '需要你手动处理 ' + lastReport.manual.length + ' 项'));
@@ -574,11 +580,14 @@ async function doFill(btn) {
   window.addEventListener('message', onMsg);
   try {
     const mine = await runFill(profile, settings);
-    got.push({ id: FRAME_ID, count: mine.count, filled: mine.filled, manual: mine.manual, unknown: mine.unknown });
+    got.push({
+      id: FRAME_ID, count: mine.count, skipped: mine.skipped,
+      filled: mine.filled, manual: mine.manual, unknown: mine.unknown,
+    });
     relayToChildren({ type: RUN_MSG, profile, options: settings });
     await sleep(1700);
   } catch (e) {
-    got.push({ count: 0, filled: [], manual: ['填充出错：' + (e && e.message ? e.message : e)], unknown: [] });
+    got.push({ count: 0, skipped: 0, filled: [], manual: ['填充出错：' + (e && e.message ? e.message : e)], unknown: [] });
   } finally {
     window.removeEventListener('message', onMsg);
     filling = false;
@@ -591,6 +600,7 @@ async function doFill(btn) {
   };
   lastReport = {
     count: got.reduce((a, b) => a + (b.count || 0), 0),
+    skipped: got.reduce((a, b) => a + (b.skipped || 0), 0),
     filled: uniq([].concat.apply([], got.map((g) => g.filled || []))),
     manual: uniq([].concat.apply([], got.map((g) => g.manual || []))),
     unknown: uniq([].concat.apply([], got.map((g) => g.unknown || []))),
@@ -651,6 +661,7 @@ export function startAutoFill() {
       if (!st.count) return;
       lastReport = {
         count: st.count,
+        skipped: st.skipped,
         filled: st.filled.slice(0, 30),
         manual: st.manual.slice(0, 20),
         unknown: st.unknown.slice(0, 20),

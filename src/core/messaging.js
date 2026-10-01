@@ -23,6 +23,7 @@ export function initMessaging() {
         type: RES_MSG,
         id: FRAME_ID,
         count: st.count,
+        skipped: st.skipped,
         filled: st.filled.slice(0, 30),
         manual: st.manual.slice(0, 20),
         unknown: st.unknown.slice(0, 20),

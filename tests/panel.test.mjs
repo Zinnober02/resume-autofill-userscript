@@ -1,7 +1,7 @@
 // 网页面板测试：按钮、编辑视图、导出下载
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPage, shadowOf, buttonByText } from './helpers/userscript-env.mjs';
+import { createPage, shadowOf, buttonByText, storageWith } from './helpers/userscript-env.mjs';
 
 const PAGE = [
   '<!doctype html><html><body><form>',
@@ -125,4 +125,15 @@ test('导出资料文件会生成 我的资料.json', async () => {
   assert.equal(data.v, 1);
   assert.equal(data.profiles[data.current].name, '张三');
   assert.ok(store.has('ra_data_v1'));
+});
+test('点一键填充后，面板里出现结果区', async () => {
+  const { window } = await createPage(PAGE, undefined, {
+    storage: storageWith({ name: '张三', phone: '13800000000', email: 'zhangsan@example.com' }),
+  });
+  const shadow = shadowOf(window);
+  shadow.querySelector('.pill').click();
+  buttonByText(shadow, '一键填充本页表单').click();
+  await new Promise((r) => setTimeout(r, 3000));
+  assert.match(shadow.textContent, /已填好/);
+  assert.equal(window.document.querySelector('input[name="fullName"]').value, '张三');
 });

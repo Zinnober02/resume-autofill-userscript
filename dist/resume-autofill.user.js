@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.11.0
+// @version      1.11.1
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -571,7 +571,7 @@
       const likeLabel = (n) => {
         if (!n || !n.tagName) return "";
         const tag = n.tagName;
-        const okTag = tag === "LABEL" || tag === "TD" || tag === "TH" || tag === "SPAN" || tag === "DIV" || tag === "P" || tag === "B" || tag === "STRONG" || tag === "EM";
+        const okTag = tag === "LABEL" || tag === "TD" || tag === "TH" || tag === "DT" || tag === "DD" || tag === "LI" || tag === "FIGCAPTION" || tag === "LEGEND" || tag === "SPAN" || tag === "DIV" || tag === "P" || tag === "B" || tag === "STRONG" || tag === "EM";
         if (!okTag) return "";
         if (n.querySelector && n.querySelector("input, select, textarea")) return "";
         return visibleText(n, 30).trim().slice(0, 30);
@@ -2381,11 +2381,20 @@
     if (el2.getAttribute("aria-hidden") === "true") return true;
     return false;
   }
+  var HINT_RE = /^(请输入|请填写|请选择|请上传|输入|填写|选择|上传|字数控制在|只支持|支持)/;
+  function isHintText(el2, value) {
+    const placeholder = String(el2.getAttribute("placeholder") || "").trim();
+    if (placeholder && value === placeholder) return true;
+    if (el2.getAttribute("data-noevent") !== null && HINT_RE.test(value)) return true;
+    return HINT_RE.test(value);
+  }
   function alreadyFilled(el2) {
     if (el2.tagName === "SELECT") {
       return !!(el2.value && el2.selectedIndex > 0 && String(el2.options[el2.selectedIndex].text).trim());
     }
-    return !!String(el2.value || "").trim();
+    const value = String(el2.value || "").trim();
+    if (!value) return false;
+    return !isHintText(el2, value);
   }
   function highlight(el2) {
     try {
@@ -2568,7 +2577,7 @@
   }
   async function runFill(profile, opts) {
     const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true, fillDatePickers: true }, opts || {});
-    const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0 };
+    const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0, skipped: 0 };
     const nodes = deepQueryAll('input, textarea, select, [role="combobox"]');
     const handled = /* @__PURE__ */ new Set();
     const segments = /* @__PURE__ */ new Map();
@@ -2652,7 +2661,10 @@
       for (let i = 0; i < group.nodes.length; i += 1) {
         const node = group.nodes[i];
         handled.add(node);
-        if (options.onlyEmpty && alreadyFilled(node)) continue;
+        if (options.onlyEmpty && alreadyFilled(node)) {
+          st.skipped += 1;
+          continue;
+        }
         if (writeDateSegment(node, group.roles[i], date)) written += 1;
         else blocked += 1;
       }
@@ -2690,7 +2702,10 @@
           const n = nodes[k];
           if (n !== el2 && (n.type || "").toLowerCase() === "radio" && n.name === el2.name) all.push(n);
         }
-        if (all.some((n) => n.checked) && options.onlyEmpty) continue;
+        if (all.some((n) => n.checked) && options.onlyEmpty) {
+          st.skipped += 1;
+          continue;
+        }
         const sample = all[0];
         const sampleBlock = sectionBlockType(sample);
         let key2 = pickKey({
@@ -2769,7 +2784,10 @@
         const pairValue = valueForField(pair.key, profile, rowIndexOf(pair.node, pair.key));
         if (pairValue) await applyValue(pair.node, pair.key, pairValue, options, profile, st);
       }
-      if (options.onlyEmpty && alreadyFilled(el2)) continue;
+      if (options.onlyEmpty && alreadyFilled(el2)) {
+        st.skipped += 1;
+        continue;
+      }
       await applyValue(el2, key, value, options, profile, st);
     }
     return st;
@@ -2798,6 +2816,7 @@
           type: RES_MSG,
           id: FRAME_ID,
           count: st.count,
+          skipped: st.skipped,
           filled: st.filled.slice(0, 30),
           manual: st.manual.slice(0, 20),
           unknown: st.unknown.slice(0, 20)
@@ -3328,6 +3347,12 @@
       const s1 = el("div", "status");
       s1.innerHTML = '<span class="ok">已填好 ' + lastReport.count + " 项</span>";
       box.appendChild(s1);
+      if (!lastReport.count && lastReport.skipped) {
+        box.appendChild(el("div", "tip", "页面上有 " + lastReport.skipped + " 个字段本来就有内容，按「只填空白字段」这一项跳过了。想覆盖就把那个勾去掉再点一次。"));
+      }
+      if (!lastReport.count && !lastReport.skipped && !lastReport.unknown.length) {
+        box.appendChild(el("div", "tip", "这一页没有找到能填的字段：表格可能在别的框架里，也可能字段名没能认出来（换一页再点一次，或者打开需要手动处理的那些看看）。"));
+      }
       if (lastReport.filled.length) box.appendChild(el("div", "list", lastReport.filled.join("　·　")));
       if (lastReport.manual.length) {
         box.appendChild(el("div", "status warn", "需要你手动处理 " + lastReport.manual.length + " 项"));
@@ -3522,11 +3547,18 @@
     window.addEventListener("message", onMsg);
     try {
       const mine = await runFill(profile, settings);
-      got.push({ id: FRAME_ID, count: mine.count, filled: mine.filled, manual: mine.manual, unknown: mine.unknown });
+      got.push({
+        id: FRAME_ID,
+        count: mine.count,
+        skipped: mine.skipped,
+        filled: mine.filled,
+        manual: mine.manual,
+        unknown: mine.unknown
+      });
       relayToChildren({ type: RUN_MSG, profile, options: settings });
       await sleep(1700);
     } catch (e) {
-      got.push({ count: 0, filled: [], manual: ["填充出错：" + (e && e.message ? e.message : e)], unknown: [] });
+      got.push({ count: 0, skipped: 0, filled: [], manual: ["填充出错：" + (e && e.message ? e.message : e)], unknown: [] });
     } finally {
       window.removeEventListener("message", onMsg);
       filling = false;
@@ -3544,6 +3576,7 @@
     };
     lastReport = {
       count: got.reduce((a, b) => a + (b.count || 0), 0),
+      skipped: got.reduce((a, b) => a + (b.skipped || 0), 0),
       filled: uniq([].concat.apply([], got.map((g) => g.filled || []))),
       manual: uniq([].concat.apply([], got.map((g) => g.manual || []))),
       unknown: uniq([].concat.apply([], got.map((g) => g.unknown || [])))
@@ -3600,6 +3633,7 @@
         if (!st.count) return;
         lastReport = {
           count: st.count,
+          skipped: st.skipped,
           filled: st.filled.slice(0, 30),
           manual: st.manual.slice(0, 20),
           unknown: st.unknown.slice(0, 20)

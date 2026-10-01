@@ -84,7 +84,10 @@ export function labelText(el) {
     const likeLabel = (n) => {
       if (!n || !n.tagName) return '';
       const tag = n.tagName;
-      const okTag = tag === 'LABEL' || tag === 'TD' || tag === 'TH' || tag === 'SPAN' || tag === 'DIV' || tag === 'P' || tag === 'B' || tag === 'STRONG' || tag === 'EM';
+      // dt / dd / li / figcaption 这些也是常见放标签的位置（姓名放在 <dt> 里的表单很多）
+      const okTag = tag === 'LABEL' || tag === 'TD' || tag === 'TH' || tag === 'DT' || tag === 'DD'
+        || tag === 'LI' || tag === 'FIGCAPTION' || tag === 'LEGEND'
+        || tag === 'SPAN' || tag === 'DIV' || tag === 'P' || tag === 'B' || tag === 'STRONG' || tag === 'EM';
       if (!okTag) return '';
       if (n.querySelector && n.querySelector('input, select, textarea')) return '';
       return visibleText(n, 30).trim().slice(0, 30);

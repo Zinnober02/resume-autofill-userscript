@@ -113,3 +113,18 @@ test('教育经历分两段时按顺序取两段资料', async () => {
   assert.equal(field(dom, 'input[name="s2"]').value, '示例学院');
   assert.equal(field(dom, 'input[name="m2"]').value, '计算机科学与技术');
 });
+test('提示文字写在 value 里的表单：标签在 dt 里，字段一样能填上', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<dl class="dl1"><dt>姓名<font class="red">*</font></dt><dd><input type="text" id="name" value="请输入姓名" class="inputxt inputName"></dd></dl>',
+    '<dl class="dl1"><dt>手机号码<font class="red">*</font></dt><dd><input type="text" id="mobile" value="请输入手机号" class="inputxt"></dd></dl>',
+    '<dl class="dl2"><dt>电子邮箱</dt><dd><input type="text" id="mail" value="请输入邮箱" class="inputxt"></dd></dl>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { name: '朱时锋', phone: '17703847052', email: 'a@b.com', extra: [] }, OPTIONS);
+  assert.equal(field(dom, '#name').value, '朱时锋');
+  assert.equal(field(dom, '#mobile').value, '17703847052');
+  assert.equal(field(dom, '#mail').value, 'a@b.com');
+  assert.deepEqual(Array.from(report.manual), []);
+});

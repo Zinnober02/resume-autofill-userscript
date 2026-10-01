@@ -40,11 +40,24 @@ export function shouldSkip(el) {
   return false;
 }
 
+// 有的表单把提示文字直接写在 value 里，没有 placeholder 属性。
+// 这类内容不算已经填过，否则「只填空白字段」会把整页字段都跳过去
+const HINT_RE = /^(请输入|请填写|请选择|请上传|输入|填写|选择|上传|字数控制在|只支持|支持)/;
+
+function isHintText(el, value) {
+  const placeholder = String(el.getAttribute('placeholder') || '').trim();
+  if (placeholder && value === placeholder) return true;
+  if (el.getAttribute('data-noevent') !== null && HINT_RE.test(value)) return true;
+  return HINT_RE.test(value);
+}
+
 export function alreadyFilled(el) {
   if (el.tagName === 'SELECT') {
     return !!(el.value && el.selectedIndex > 0 && String(el.options[el.selectedIndex].text).trim());
   }
-  return !!String(el.value || '').trim();
+  const value = String(el.value || '').trim();
+  if (!value) return false;
+  return !isHintText(el, value);
 }
 
 export function highlight(el) {
@@ -245,7 +258,7 @@ function pairedStart(el, key) {
 
 export async function runFill(profile, opts) {
   const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true, fillDatePickers: true }, opts || {});
-  const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0 };
+  const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0, skipped: 0 };
   const nodes = deepQueryAll('input, textarea, select, [role="combobox"]');
   const handled = new Set();
   const segments = new Map();
@@ -345,7 +358,7 @@ export async function runFill(profile, opts) {
     for (let i = 0; i < group.nodes.length; i += 1) {
       const node = group.nodes[i];
       handled.add(node);
-      if (options.onlyEmpty && alreadyFilled(node)) continue;
+      if (options.onlyEmpty && alreadyFilled(node)) { st.skipped += 1; continue; }
       if (writeDateSegment(node, group.roles[i], date)) written += 1;
       else blocked += 1;
     }
@@ -387,7 +400,7 @@ export async function runFill(profile, opts) {
         const n = nodes[k];
         if (n !== el && (n.type || '').toLowerCase() === 'radio' && n.name === el.name) all.push(n);
       }
-      if (all.some((n) => n.checked) && options.onlyEmpty) continue;
+      if (all.some((n) => n.checked) && options.onlyEmpty) { st.skipped += 1; continue; }
       const sample = all[0];
       // 单选按钮自己的文字是「男/女」，组名要从整行文字里找
       const sampleBlock = sectionBlockType(sample);
@@ -474,7 +487,7 @@ export async function runFill(profile, opts) {
       if (pairValue) await applyValue(pair.node, pair.key, pairValue, options, profile, st);
     }
 
-    if (options.onlyEmpty && alreadyFilled(el)) continue;
+    if (options.onlyEmpty && alreadyFilled(el)) { st.skipped += 1; continue; }
     await applyValue(el, key, value, options, profile, st);
   }
 
