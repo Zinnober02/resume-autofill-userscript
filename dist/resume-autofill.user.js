@@ -2704,25 +2704,6 @@
       if (!segments.has(row)) segments.set(row, dateSegmentGroup(el2));
       return segments.get(row);
     };
-    const classifyCache = /* @__PURE__ */ new Map();
-    const classifyIn = (scope) => {
-      if (classifyCache.has(scope)) return classifyCache.get(scope);
-      const out = [];
-      const list = scope.querySelectorAll("input, select");
-      for (let i = 0; i < list.length; i += 1) {
-        const node = list[i];
-        if (isOurUI(node) || node.disabled) continue;
-        const t = (node.type || "").toLowerCase();
-        if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") continue;
-        if (t === "file" || t === "checkbox" || t === "radio") continue;
-        out.push({
-          node,
-          key: pickKey({ label: labelText(node), attr: attrText(node), block: sectionBlockType(node), hint: "", allowHint: false })
-        });
-      }
-      classifyCache.set(scope, out);
-      return out;
-    };
     const cascadeKeyCache = /* @__PURE__ */ new Map();
     const classifyForCascade = (node) => {
       if (cascadeKeyCache.has(node)) return cascadeKeyCache.get(node);

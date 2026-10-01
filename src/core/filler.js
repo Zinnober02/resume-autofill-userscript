@@ -312,27 +312,6 @@ export async function runFill(profile, opts) {
     return segments.get(row);
   };
 
-  // 一栏里连续的同类控件看成一组：地址字段常是一串下拉，
-  // 其中第一级往往没有字段名（电信那个 firstLevl 就是），只能靠同组的兄弟认出来
-  const classifyCache = new Map();
-  const classifyIn = (scope) => {
-    if (classifyCache.has(scope)) return classifyCache.get(scope);
-    const out = [];
-    const list = scope.querySelectorAll('input, select');
-    for (let i = 0; i < list.length; i += 1) {
-      const node = list[i];
-      if (isOurUI(node) || node.disabled) continue;
-      const t = (node.type || '').toLowerCase();
-      if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'reset' || t === 'image') continue;
-      if (t === 'file' || t === 'checkbox' || t === 'radio') continue;
-      out.push({
-        node,
-        key: pickKey({ label: labelText(node), attr: attrText(node), block: sectionBlockType(node), hint: '', allowHint: false }),
-      });
-    }
-    classifyCache.set(scope, out);
-    return out;
-  };
 
   // 分级字段（省 / 市 / 区县这类）走四段管线：认组、分角色、逐级驱动、等就绪
   const cascadeKeyCache = new Map();
