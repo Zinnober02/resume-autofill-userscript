@@ -63,12 +63,12 @@ test('关键词先进搜索框，候选是拿关键词换来的', async () => {
 function schoolPage() {
   return [
     '<!doctype html><html><body><form>',
-    '<div class="picker">',
-    '<input readonly school-or-subject="1" name="school" msg="学校名称" value="">',
-    '<input school-or-subject="2" class="input-query" value="">',
-    '<div id="choose-school">',
-    '<input class="search-school" type="text">',
-    '<ul class="search-result-li"></ul>',
+    '<div class="field">',
+    '<input readonly name="school" msg="学校名称" value="">',
+    '<input type="hidden" name="school-model" value="">',
+    '<div class="panel" style="display:none">',
+    '<input type="text" class="search">',
+    '<ul class="results"></ul>',
     '</div>',
     '</div>',
     '</form></body></html>',
@@ -76,16 +76,18 @@ function schoolPage() {
 }
 
 function installSchoolPicker(window) {
-  const root = window.document.querySelector('.picker');
-  const shown = root.querySelector('input[school-or-subject="1"]');
-  const helper = root.querySelector('input[school-or-subject="2"]');
-  const box = root.querySelector('.search-school');
-  const list = root.querySelector('.search-result-li');
+  const root = window.document.querySelector('.field');
+  const shown = root.querySelector('input[readonly]');
+  const helper = root.querySelector('input[type="hidden"]');
+  const panel = root.querySelector('.panel');
+  const box = root.querySelector('.search');
+  const list = root.querySelector('.results');
   let helperWritten = false;
   helper.addEventListener('input', () => { helperWritten = true; });
+  shown.addEventListener('click', () => { panel.style.display = 'block'; });
   box.addEventListener('input', () => {
     list.innerHTML = '';
-    ['南京大学金陵学院', '南京大学'].forEach((name) => {
+    ['南京大学金陵学院', '南京大学', '南京大学附属中学'].forEach((name) => {
       const li = window.document.createElement('li');
       const a = window.document.createElement('a');
       a.textContent = name;
@@ -94,6 +96,7 @@ function installSchoolPicker(window) {
       a.addEventListener('click', () => {
         shown.value = name;
         helper.value = name;
+        panel.style.display = 'none';
       });
     });
   });
@@ -104,7 +107,7 @@ test('学校字段：点开只读展示框，在弹层里点中候选', async ()
   const { dom, window } = await createPage(schoolPage());
   const helperWritten = installSchoolPicker(window);
   const report = await runFill(window, { educations: [{ school: '南京大学' }], extra: [] }, OPTIONS);
-  assert.equal(field(dom, 'input[school-or-subject="1"]').value, '南京大学');
+  assert.equal(field(dom, 'input[readonly]').value, '南京大学');
   assert.deepEqual(Array.from(report.filled), ['学校']);
   assert.deepEqual(Array.from(report.manual), []);
   assert.equal(helperWritten(), false, '隐藏的辅助输入框不应该被脚本写值');
@@ -114,6 +117,6 @@ test('弹层里没有匹配项时记进需要手动处理', async () => {
   const { dom, window } = await createPage(schoolPage());
   installSchoolPicker(window);
   const report = await runFill(window, { educations: [{ school: '某某大学' }], extra: [] }, OPTIONS);
-  assert.equal(field(dom, 'input[school-or-subject="1"]').value, '');
+  assert.equal(field(dom, 'input[readonly]').value, '');
   assert.ok(Array.from(report.manual).some((m) => m.indexOf('弹出层') >= 0));
 });

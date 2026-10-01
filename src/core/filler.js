@@ -10,9 +10,8 @@ import {
   splitDateTime, FIELD_NAMES,
 } from './value.js';
 import { splitAddress, addressRole, addressSegmentGroup, fillAddressSegment } from './address.js';
-import {
-  isSearchSelect, fillSearchSelect, isModalPicker, isPickerHelper, fillModalPicker,
-} from './search-select.js';
+import { isSearchSelect, fillSearchSelect } from './search-select.js';
+import { fillFloatingPicker } from './floating-picker.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
 import { blockIndexOf } from './blocks.js';
 
@@ -141,9 +140,23 @@ async function applyValue(el, key, value, options, profile, st) {
     return;
   }
 
-  // 学校、专业这类字段：只读的展示框，点开弹层再在弹层里选候选
-  if (isModalPicker(el)) {
-    if (await fillModalPicker(el, value)) {
+  // 只读的输入框：日期控件走日期那一套，其余多半是「点开弹层选候选」的展示框
+  if (el.tagName === 'INPUT' && el.readOnly) {
+    if (isDatePicker(el)) {
+      if (await fillDatePicker(el, value)) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el);
+      } else {
+        st.manual.push(name + '：日期选择器没有选上，请手动选');
+      }
+      return;
+    }
+    if (DATE_KEYS[key]) {
+      st.manual.push(name + '：只读的日期控件，请手动选');
+      return;
+    }
+    if (await fillFloatingPicker(el, value)) {
       st.count += 1;
       st.filled.push(name);
       if (options.highlight) highlight(el);
@@ -211,13 +224,14 @@ export async function runFill(profile, opts) {
   const segments = new Map();
 
   const skipNode = (el) => {
-    if (isOurUI(el)) return true;
-    // 弹层控件里的辅助输入框（隐藏的 input-query、弹层自己的搜索框）不作为独立字段
-    if (isPickerHelper(el)) return true;
-    if (options.fillDatePickers && el.tagName === 'INPUT' && el.readOnly && isDatePicker(el)) return false;
-    // 学校 / 专业这类字段是只读的展示框，点它才会弹出候选弹层
-    if (el.tagName === 'INPUT' && el.readOnly && isModalPicker(el)) return false;
-    return shouldSkip(el);
+    if (isOurUI(el) || el.disabled) return true;
+    const t = (el.type || '').toLowerCase();
+    if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'reset' || t === 'image') return true;
+    if (el.getAttribute('aria-hidden') === 'true') return true;
+    // 页面上看不见的控件不填：弹层里的搜索框、隐藏的模型输入框都在这一类。
+    // 只读的输入框不在这里排除，它可能是「点开才出候选」的展示框
+    if (!visible(el)) return true;
+    return false;
   };
 
   // 教育、工作经历可能有好几段，数出当前字段属于第几段

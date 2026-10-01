@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.8.0
+// @version      1.9.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -1092,7 +1092,7 @@
       const node = list[i];
       const text = norm(node.textContent);
       if (!text || text === "请选择") continue;
-      if (/no-results|search-no/.test(String(node.className || ""))) continue;
+      if (/no-results|search-no|model-close/.test(String(node.className || ""))) continue;
       let score = 0;
       if (text === w) score = 100;
       else if (text.indexOf(w) >= 0) score = 60;
@@ -1145,60 +1145,144 @@
     if (toggle) clickNode(toggle);
     return false;
   }
-  var PICKER_INPUT = 'input[readonly][school-or-subject="1"]';
-  var PICKER_PANEL = ".search-result-li, .school-m, .school-b, .main-data";
-  var PICKER_ITEM = ".search-result-li li, .search-result-li a, .school-m li, .school-m a, .school-b li, .school-b a, .main-data li, .main-data a, .main-data p, .main-data span";
-  function pickerRoot(el2) {
-    let node = el2.parentElement;
-    for (let i = 0; node && node !== document.body && i < 10; i += 1) {
-      if (node.querySelector && node.querySelector(PICKER_INPUT) && node.querySelector(PICKER_PANEL)) return node;
-      node = node.parentElement;
+
+  // src/core/floating-picker.js
+  var MIN_ITEMS = 3;
+  var OPEN_ROUNDS = 8;
+  var PICK_ROUNDS = 12;
+  function clickNode2(node) {
+    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }
+  function snapshotVisible() {
+    const seen = /* @__PURE__ */ new Set();
+    const all = document.querySelectorAll("body *");
+    for (let i = 0; i < all.length; i += 1) {
+      if (visible(all[i])) seen.add(all[i]);
+    }
+    return seen;
+  }
+  function sameStructureChildren(container) {
+    const groups = /* @__PURE__ */ new Map();
+    const kids = container.children || [];
+    for (let i = 0; i < kids.length; i += 1) {
+      const child = kids[i];
+      if (!visible(child)) continue;
+      const text = norm(child.textContent);
+      if (!text || text.length > 80) continue;
+      const key = child.tagName + "|" + String(child.className || "");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(child);
+    }
+    let best = [];
+    groups.forEach((list) => {
+      if (list.length > best.length) best = list;
+    });
+    return best;
+  }
+  function candidateItems(root) {
+    let best = [];
+    const nodes = [root];
+    const inside = root.querySelectorAll ? root.querySelectorAll("*") : [];
+    for (let i = 0; i < inside.length; i += 1) nodes.push(inside[i]);
+    for (let i = 0; i < nodes.length; i += 1) {
+      const items = sameStructureChildren(nodes[i]);
+      if (items.length > best.length) best = items;
+    }
+    return best;
+  }
+  function clickTargetFor(node) {
+    const inner = node.querySelector && node.querySelector('a, button, [role="option"], [role="menuitem"]');
+    return inner || node;
+  }
+  function pickItem(items, want) {
+    const w = norm(want);
+    const hits = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const text = norm(items[i].textContent);
+      if (!text) continue;
+      let score = 0;
+      if (text === w) score = 100;
+      else if (text.indexOf(w) >= 0) score = 60;
+      else if (w.indexOf(text) >= 0) score = 40;
+      if (score) hits.push({ node: items[i], score });
+    }
+    if (!hits.length) return null;
+    let bestScore = 0;
+    for (let i = 0; i < hits.length; i += 1) bestScore = Math.max(bestScore, hits[i].score);
+    const top = hits.filter((h) => h.score === bestScore).map((h) => h.node);
+    for (let i = 0; i < top.length; i += 1) {
+      const node = top[i];
+      if (!top.some((other) => other !== node && node.contains(other))) return clickTargetFor(node);
+    }
+    return clickTargetFor(top[0]);
+  }
+  function looksLikePanel(node) {
+    if (node.querySelector && node.querySelector('input, textarea, [role="option"], [role="listbox"]')) return true;
+    return sameStructureChildren(node).length >= MIN_ITEMS;
+  }
+  async function openPanel(el2) {
+    const before = snapshotVisible();
+    clickNode2(el2);
+    for (let round = 0; round < OPEN_ROUNDS; round += 1) {
+      await sleep(150);
+      const fresh = [];
+      const all = document.querySelectorAll("body *");
+      for (let i = 0; i < all.length; i += 1) {
+        const node = all[i];
+        if (isOurUI(node) || before.has(node) || !visible(node)) continue;
+        fresh.push(node);
+      }
+      const hits = [];
+      for (let i = 0; i < fresh.length; i += 1) {
+        if (looksLikePanel(fresh[i])) hits.push(fresh[i]);
+      }
+      if (!hits.length) continue;
+      for (let i = hits.length - 1; i >= 0; i -= 1) {
+        const node = hits[i];
+        if (!hits.some((other) => other !== node && node.contains(other))) return { panel: node };
+      }
+      return { panel: hits[hits.length - 1] };
     }
     return null;
   }
-  function isModalPicker(el2) {
-    if (!el2 || el2.tagName !== "INPUT" || !el2.readOnly) return false;
-    if (el2.getAttribute("school-or-subject") !== "1") return false;
-    return !!pickerRoot(el2);
-  }
-  function isPickerHelper(el2) {
-    if (!el2 || el2.tagName !== "INPUT" || el2.readOnly) return false;
-    return !!pickerRoot(el2);
-  }
-  function pickerCandidates(root) {
-    const list = root.querySelectorAll(PICKER_ITEM);
-    const out = [];
+  function searchBoxIn(panel) {
+    const list = panel.querySelectorAll("input, textarea");
     for (let i = 0; i < list.length; i += 1) {
       const node = list[i];
-      if (isOurUI(node) || !visible(node)) continue;
-      if (/no-results|search-no|model-close/.test(String(node.className || ""))) continue;
-      out.push(node);
+      if (node.readOnly || node.disabled || !visible(node)) continue;
+      const type = (node.type || "").toLowerCase();
+      if (type === "hidden" || type === "checkbox" || type === "radio" || type === "file") continue;
+      return node;
     }
-    return out;
+    return null;
   }
-  async function fillModalPicker(el2, value) {
+  async function waitPicked(el2, want) {
+    const w = norm(want);
+    for (let i = 0; i < 10; i += 1) {
+      await sleep(120);
+      const value = String(el2.value || "").trim();
+      if (value && norm(value).indexOf(w) >= 0) return true;
+    }
+    return false;
+  }
+  async function fillFloatingPicker(el2, value) {
     const want = String(value == null ? "" : value).trim();
     if (!want) return false;
-    const root = pickerRoot(el2);
-    if (!root) return false;
-    clickNode(el2);
-    await sleep(300);
-    const box = root.querySelector(".search-school, .search-job");
+    const opened = await openPanel(el2);
+    if (!opened) return false;
+    const box = searchBoxIn(opened.panel);
     if (box) setVal(box, want);
-    const model = root.querySelector('input[school-or-subject="2"]');
-    for (let i = 0; i < 12; i += 1) {
-      const hit = pickOption(pickerCandidates(root), want);
-      if (hit) {
-        clickNode(hit);
-        for (let k = 0; k < 10; k += 1) {
-          await sleep(120);
-          if (String(el2.value || "").trim()) return true;
-          if (model && norm(model.value) === norm(want)) return true;
-        }
-        return false;
-      }
-      await sleep(180);
+    for (let round = 0; round < PICK_ROUNDS; round += 1) {
+      await sleep(150);
+      const hit = pickItem(candidateItems(opened.panel), want);
+      if (!hit) continue;
+      clickNode2(hit);
+      if (await waitPicked(el2, want)) return true;
+      break;
     }
+    clickNode2(el2);
     return false;
   }
 
@@ -1225,7 +1309,7 @@
     const list = deepQueryAll(PANEL_SELECTOR).filter(panelVisible);
     return list.length ? list[list.length - 1] : null;
   }
-  function clickNode2(node) {
+  function clickNode3(node) {
     node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     node.click();
@@ -1256,7 +1340,7 @@
       hits.push(cell);
     }
     if (!hits.length) return false;
-    clickNode2(innermost(hits));
+    clickNode3(innermost(hits));
     return true;
   }
   function openYearView(panel) {
@@ -1268,7 +1352,7 @@
         if (/^\d{4}\s*年?$/.test(String(parts[j].textContent || "").trim())) hits.push(parts[j]);
       }
       if (hits.length) {
-        clickNode2(innermost(hits));
+        clickNode3(innermost(hits));
         return true;
       }
     }
@@ -1279,7 +1363,7 @@
     for (let i = 0; i < list.length; i += 1) {
       const cls = String(list[i].className || "");
       if (/next|super-next/.test(cls)) continue;
-      clickNode2(list[i]);
+      clickNode3(list[i]);
       return true;
     }
     return false;
@@ -1289,7 +1373,7 @@
     for (let i = 0; i < list.length; i += 1) {
       const cls = String(list[i].className || "");
       if (/prev/.test(cls) && !/next/.test(cls)) continue;
-      clickNode2(list[i]);
+      clickNode3(list[i]);
       return true;
     }
     return false;
@@ -1583,8 +1667,22 @@
       }
       return;
     }
-    if (isModalPicker(el2)) {
-      if (await fillModalPicker(el2, value)) {
+    if (el2.tagName === "INPUT" && el2.readOnly) {
+      if (isDatePicker(el2)) {
+        if (await fillDatePicker(el2, value)) {
+          st.count += 1;
+          st.filled.push(name);
+          if (options.highlight) highlight(el2);
+        } else {
+          st.manual.push(name + "：日期选择器没有选上，请手动选");
+        }
+        return;
+      }
+      if (DATE_KEYS[key]) {
+        st.manual.push(name + "：只读的日期控件，请手动选");
+        return;
+      }
+      if (await fillFloatingPicker(el2, value)) {
         st.count += 1;
         st.filled.push(name);
         if (options.highlight) highlight(el2);
@@ -1646,11 +1744,12 @@
     const handled = /* @__PURE__ */ new Set();
     const segments = /* @__PURE__ */ new Map();
     const skipNode = (el2) => {
-      if (isOurUI(el2)) return true;
-      if (isPickerHelper(el2)) return true;
-      if (options.fillDatePickers && el2.tagName === "INPUT" && el2.readOnly && isDatePicker(el2)) return false;
-      if (el2.tagName === "INPUT" && el2.readOnly && isModalPicker(el2)) return false;
-      return shouldSkip(el2);
+      if (isOurUI(el2) || el2.disabled) return true;
+      const t = (el2.type || "").toLowerCase();
+      if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") return true;
+      if (el2.getAttribute("aria-hidden") === "true") return true;
+      if (!visible(el2)) return true;
+      return false;
     };
     const indexCache = /* @__PURE__ */ new Map();
     const rowIndexOf = (el2, key) => {

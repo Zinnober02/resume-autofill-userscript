@@ -57,6 +57,10 @@ https://raw.githubusercontent.com/Zinnober02/resume-autofill-userscript/main/dis
 | `src/core/storage.js` | 用 `GM_getValue` / `GM_setValue` 读写资料 |
 | `src/core/filler.js` | 填充引擎 |
 | `src/core/date-widget.js` | 年 / 月 / 日 分开的控件组与组件库日期选择器 |
+| `src/core/search-select.js` | 可搜索下拉：点开、输入关键词、再点候选 |
+| `src/core/floating-picker.js` | 弹层选择控件（只读展示框 + 候选浮层），按行为与结构识别 |
+| `src/core/address.js` | 省 / 市 / 区 地址的分段与填充 |
+| `src/core/regions.js` | 内置的省市区数据（来自 area-data，MIT） |
 | `src/core/blocks.js` | 经历区块的分段识别 |
 | `src/core/watcher.js` | 页面上新出现的编辑框自动填充 |
 | `src/core/block-adder.js` | 按资料段数点「添加」补足经历区块 |
