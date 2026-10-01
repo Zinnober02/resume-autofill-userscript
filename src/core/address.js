@@ -4,6 +4,51 @@ import { norm } from './rules.js';
 import { sleep, labelText, attrText, rowContainer, isOurUI } from './dom.js';
 import { setVal, bestOptionIndex } from './form-control.js';
 import { isSearchSelect, fillSearchSelect } from './search-select.js';
+import { REGIONS } from './regions.js';
+
+// 把内置行政区划里三级的名字分别收成集合：判断一个下拉装的是哪一级，
+// 看它的选项内容命中哪一级的名字，与网页怎么命名、控件怎么排都无关
+const PROVINCE_NAMES = new Set();
+const CITY_NAMES = new Set();
+const DISTRICT_NAMES = new Set();
+(function buildRegionNames() {
+  const provinces = REGIONS['86'] || {};
+  Object.keys(provinces).forEach((code) => {
+    PROVINCE_NAMES.add(norm(provinces[code]));
+    const cities = REGIONS[code] || {};
+    Object.keys(cities).forEach((cityCode) => {
+      CITY_NAMES.add(norm(cities[cityCode]));
+      const districts = REGIONS[cityCode] || {};
+      Object.keys(districts).forEach((areaCode) => {
+        DISTRICT_NAMES.add(norm(districts[areaCode]));
+      });
+    });
+  });
+})();
+
+// 看选项里装的是省名、市名还是区县名
+export function regionLevelOf(node) {
+  if (!node || node.tagName !== 'SELECT' || !node.options) return '';
+  const texts = [];
+  for (let i = 0; i < node.options.length; i += 1) {
+    const t = norm(node.options[i].textContent);
+    if (t) texts.push(t);
+  }
+  if (texts.length < 2) return '';
+  let province = 0;
+  let city = 0;
+  let district = 0;
+  texts.forEach((t) => {
+    if (PROVINCE_NAMES.has(t)) province += 1;
+    if (CITY_NAMES.has(t)) city += 1;
+    if (DISTRICT_NAMES.has(t)) district += 1;
+  });
+  const best = Math.max(province, city, district);
+  if (best < 2) return '';
+  if (best === province) return 'province';
+  if (best === city) return 'city';
+  return 'district';
+}
 
 const PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
 const CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;
@@ -50,7 +95,7 @@ const ADDRESS_ROLES = ['province', 'city', 'district'];
 // 一组地址控件里谁管哪一级：自己能看出角色的按自己的，
 // 看不出来的按先后顺序补（第一级是省，第二级是市，第三级是区县）
 export function assignRoles(nodes) {
-  const roles = nodes.map((node) => addressRole(node));
+  const roles = nodes.map((node) => addressRole(node) || regionLevelOf(node));
   const taken = {};
   roles.forEach((role) => { if (role) taken[role] = 1; });
   const free = ADDRESS_ROLES.filter((role) => !taken[role]);

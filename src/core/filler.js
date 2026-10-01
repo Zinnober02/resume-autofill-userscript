@@ -272,7 +272,15 @@ export async function runFill(profile, opts) {
     return out;
   };
 
+  const addressGroupCache = new Map();
   const addressGroupAt = (el) => {
+    if (addressGroupCache.has(el)) return addressGroupCache.get(el);
+    const result = computeAddressGroup(el);
+    addressGroupCache.set(el, result);
+    return result;
+  };
+
+  const computeAddressGroup = (el) => {
     const scope = sectionContainer(el) || rowContainer(el) || document;
     const list = classifyIn(scope);
     const idx = list.findIndex((item) => item.node === el);

@@ -80,8 +80,10 @@ test('日期用日期控件，省市区用三级联动', async () => {
   const regions = shadow.querySelectorAll('.region');
   assert.equal(regions.length, 4, '籍贯、户口所在地、现居城市、高考生源地应该是三级联动');
   const selects = regions[0].querySelectorAll('select');
-  assert.equal(selects.length, 2, '省与市是下拉，区县直接填');
-  assert.ok(regions[0].querySelector('input[placeholder="区 / 县"]'), '区县应该是输入框');
+  assert.equal(selects.length, 2, '省与市是下拉');
+  const area = regions[0].querySelector('input[placeholder="区 / 县"]');
+  assert.ok(area, '区县是能直接填的输入框');
+  assert.ok(area.getAttribute('list'), '区县输入框要挂上候选列表');
   assert.ok(selects[0].options.length > 30, '省下拉应该有全国省份');
   assert.equal(selects[1].options.length, 1, '没选省之前市是空的');
   selects[0].value = selects[0].options[1].value;

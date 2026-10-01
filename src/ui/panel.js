@@ -129,8 +129,13 @@ export function initPanel(initialData) {
   data = initialData;
 }
 
-// 省 / 市 / 区 三级联动，选完拼成「浙江省杭州市西湖区」这样的整串
+let regionPickerSeq = 0;
+
+// 省 / 市 / 区 三级联动，选完拼成「浙江省杭州市西湖区」这样的整串。
+// 区县可以直接填，也从候选里挑（浏览器自带的候选列表）
 function regionPicker(value, setValue) {
+  regionPickerSeq += 1;
+  const areaListId = 'ra-areas-' + regionPickerSeq;
   const parsed = splitAddress(value);
   const box = el('div', 'region');
   const makeSelect = (placeholder) => {
@@ -146,11 +151,23 @@ function regionPicker(value, setValue) {
   detail.type = 'text';
   detail.placeholder = '详细地址（可选）';
   detail.value = parsed.detail || '';
-  // 区县不做下拉，直接填，避免数据里对不上
   const areaInput = el('input');
   areaInput.type = 'text';
   areaInput.placeholder = '区 / 县';
   areaInput.value = parsed.district || '';
+  areaInput.setAttribute('list', areaListId);
+  const areaList = el('datalist');
+  areaList.id = areaListId;
+
+  const fillAreas = (cityCode) => {
+    areaList.innerHTML = '';
+    const areas = REGIONS[cityCode] || {};
+    Object.keys(areas).forEach((code) => {
+      const option = el('option');
+      option.value = areas[code];
+      areaList.appendChild(option);
+    });
+  };
 
   const codeOf = (map, name) => Object.keys(map).find((code) => map[code] === name) || '';
   const fillSelect = (sel, map, placeholder, current) => {
@@ -173,16 +190,22 @@ function regionPicker(value, setValue) {
   const provinces = REGIONS['86'] || {};
   fillSelect(provSel, provinces, '省', parsed.province);
   fillSelect(citySel, REGIONS[provSel.value] || {}, '市', parsed.city);
+  fillAreas(citySel.value);
   provSel.onchange = () => {
     fillSelect(citySel, REGIONS[provSel.value] || {}, '市', '');
+    fillAreas('');
     emit();
   };
-  citySel.onchange = emit;
+  citySel.onchange = () => {
+    fillAreas(citySel.value);
+    emit();
+  };
   areaInput.oninput = emit;
   detail.oninput = emit;
   box.appendChild(provSel);
   box.appendChild(citySel);
   box.appendChild(areaInput);
+  box.appendChild(areaList);
   box.appendChild(detail);
   return box;
 }

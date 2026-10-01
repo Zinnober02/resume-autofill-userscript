@@ -172,6 +172,38 @@ test('同栏两个下拉、第一级没有字段名时，第一个填省第二�
   assert.deepEqual(Array.from(report.manual), []);
 });
 
+test('按选项内容判断层级：顺序反了也不会把市当成省', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="row">',
+    '<select name="a1" msg="籍贯"><option value="">请选择</option><option>杭州市</option><option>南京市</option><option>广州市</option></select>',
+    '<select name="a2"><option value="">请选择</option><option>浙江省</option><option>江苏省</option><option>广东省</option></select>',
+    '</div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { hometown: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="a1"]').value, '杭州市');
+  assert.equal(field(dom, 'select[name="a2"]').value, '浙江省');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
+test('只有市与区两个下拉、没有省时也能各归各位', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="row">',
+    '<select name="c" msg="户口所在地"><option value="">请选择</option><option>杭州市</option><option>南京市</option><option>广州市</option></select>',
+    '<select name="d"><option value="">请选择</option><option>西湖区</option><option>玄武区</option><option>越秀区</option></select>',
+    '</div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { hukou: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="c"]').value, '杭州市');
+  assert.equal(field(dom, 'select[name="d"]').value, '西湖区');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
 test('下拉里确实没有能对上的选项时记进需要手动处理', async () => {
   const html = [
     '<!doctype html><html><body><form>',
