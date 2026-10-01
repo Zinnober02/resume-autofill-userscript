@@ -103,6 +103,29 @@ export function labelText(el) {
       push(meaningfulLabel(likeLabel(up)));
       up = up.previousElementSibling;
     }
+    // 表格布局：控件所在的列，列名可能写在 thead 的 th 里，
+    // 每个数据格子里只有控件，前面的兄弟元素是空的
+    if (!parts.length) {
+      const cell = el.closest && el.closest('td, th');
+      const table = cell && cell.closest('table');
+      if (cell && table) {
+        const row = cell.parentElement;
+        let headRow = table.querySelector('thead tr');
+        if (!headRow) {
+          // 没有 thead 时，只有整行都是 th 的才算表头，否则第一行也是数据
+          const firstRow = table.querySelector('tr');
+          if (firstRow && firstRow !== row) {
+            const cells = Array.prototype.slice.call(firstRow.children);
+            if (cells.length && cells.every((c) => c.tagName === 'TH')) headRow = firstRow;
+          }
+        }
+        if (row && headRow && headRow !== row) {
+          const index = Array.prototype.indexOf.call(row.children, cell);
+          const headCell = headRow.children[index];
+          if (headCell) push(meaningfulLabel(visibleText(headCell, 30)));
+        }
+      }
+    }
     // 文字和控件挤在同一个容器里：<td>姓名<input></td>、<div>手机号码：<input></div>。
     // 取控件前面那一段，遇到别的控件就停——那说明文字是给别人的
     if (!parts.length && el.parentElement) {

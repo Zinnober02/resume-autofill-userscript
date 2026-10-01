@@ -2,6 +2,18 @@
 import { norm } from './rules.js';
 import { sleep, deepQueryAll, visible } from './dom.js';
 
+// 老框架盯的钩子各不相同：AngularJS 听 input / change，jQuery 校验常挂 blur，
+// 更老的挂 keyup。按真人操作的顺序把整串事件都派发一遍
+const FIELD_EVENTS = ['input', 'keyup', 'change', 'blur'];
+
+function fireEvents(el) {
+  FIELD_EVENTS.forEach((type) => {
+    try {
+      el.dispatchEvent(new Event(type, { bubbles: true }));
+    } catch (e) { /* 个别事件构造失败不影响其它 */ }
+  });
+}
+
 // 直接改 value 属性 React 不会认，必须走原生 setter 再派发事件
 export function setVal(el, value) {
   let proto = HTMLInputElement.prototype;
@@ -10,8 +22,7 @@ export function setVal(el, value) {
   const desc = Object.getOwnPropertyDescriptor(proto, 'value');
   if (desc && desc.set) desc.set.call(el, value);
   else el.value = value;
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
+  fireEvents(el);
 }
 
 export function bestOptionIndex(select, want, preferEnrolled) {

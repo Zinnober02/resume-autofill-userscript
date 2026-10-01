@@ -115,13 +115,26 @@ export function detectCascade(el, classify) {
   };
 }
 
-// 组件把原生控件藏起来、只留自己那个按钮时，仍然要处理它
+// 原生控件被组件藏起来、旁边留了一个可见的触发元素时，找出那个元素。
+// 不认组件类名：隐藏的原生控件 + 邻近的可见按钮，这个形态各家组件都一样
+export function visibleTriggerFor(node) {
+  if (!node || !node.getAttribute) return null;
+  if (visible(node)) return null;
+  let scope = node.parentElement;
+  for (let depth = 0; scope && depth < 4; depth += 1) {
+    const list = scope.querySelectorAll('button, a, [role="button"], [role="combobox"], [data-toggle="dropdown"]');
+    for (let i = 0; i < list.length; i += 1) {
+      const el = list[i];
+      if (el === node || el.contains(node)) continue;
+      if (visible(el)) return el;
+    }
+    scope = scope.parentElement;
+  }
+  return null;
+}
+
 export function hasVisibleMirror(node) {
-  if (!node || node.tagName !== 'SELECT') return false;
-  const wrap = node.closest && node.closest('.bootstrap-select');
-  if (!wrap) return false;
-  const toggle = wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
-  return !!(toggle && visible(toggle));
+  return !!visibleTriggerFor(node);
 }
 
 function mirrorText(node) {

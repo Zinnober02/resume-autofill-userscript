@@ -145,3 +145,34 @@ test('老页面写法：文字和控件挤在同一个容器里', async () => {
   assert.equal(field(dom, '#n4').value, '南京大学');
   assert.deepEqual(Array.from(report.manual), []);
 });
+test('表格布局：列名写在 thead 里时也能认出字段', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<table>',
+    '<thead><tr><th>姓名</th><th>手机号码</th><th>电子邮箱</th></tr></thead>',
+    '<tbody><tr>',
+    '<td><input id="c1" type="text" value="请输入姓名"></td>',
+    '<td><input id="c2" type="text"></td>',
+    '<td><input id="c3" type="text"></td>',
+    '</tr></tbody>',
+    '</table>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  await runFill(window, { name: '朱时锋', phone: '17703847052', email: 'a@b.com', extra: [] }, OPTIONS);
+  assert.equal(field(dom, '#c1').value, '朱时锋');
+  assert.equal(field(dom, '#c2').value, '17703847052');
+  assert.equal(field(dom, '#c3').value, 'a@b.com');
+});
+test('标签读不到时，靠下拉的选项内容认出字段', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div><select id="s1"><option value="">请选择</option><option>男</option><option>女</option></select></div>',
+    '<div><select id="s2"><option value="">请选择</option><option>未婚</option><option>已婚</option><option>离异</option></select></div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  await runFill(window, { gender: '男', maritalStatus: '未婚', extra: [] }, OPTIONS);
+  assert.equal(field(dom, '#s1').value, '男');
+  assert.equal(field(dom, '#s2').value, '未婚');
+});

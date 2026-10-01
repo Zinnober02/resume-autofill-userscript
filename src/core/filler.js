@@ -17,6 +17,7 @@ import { isSearchSelect, fillSearchSelect } from './search-select.js';
 import { fillFloatingPicker } from './floating-picker.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
 import { blockIndexOf } from './blocks.js';
+import { optionsKeyOf } from './options-hint.js';
 
 // 右边这类字段要先填左边那个才能填：结束时间要先有开始时间，证件号码要先选证件类型
 const PREREQUISITE = {
@@ -223,9 +224,21 @@ async function applyValue(el, key, value, options, profile, st) {
     st.manual.push(name + '：这个控件要填具体时刻，资料里没有，请手动填写');
     return;
   }
+  // 老站在 blur 里做校验，可能当场把值清掉，所以写完要读回来看看
+  const wasEmpty = /ng-empty/.test(String(el.className || ''));
   setVal(el, out);
-  if (!String(el.value || '').trim()) {
+  const back = String(el.value || '').trim();
+  if (!back) {
     st.manual.push(name + '：控件不接受这个格式，请手动填写');
+    return;
+  }
+  if (back !== out && isHintText(el, back)) {
+    st.manual.push(name + '：写进去的值被换回了提示文字，请手动填写');
+    return;
+  }
+  // AngularJS 会用一个状态类标出「这个字段还是空的」
+  if (wasEmpty && /ng-empty/.test(String(el.className || ''))) {
+    st.manual.push(name + '：页面没有接受这个值，请手动填写');
     return;
   }
   st.count += 1;
@@ -460,6 +473,8 @@ export async function runFill(profile, opts) {
       const ex = matchExtra(profile, label, attr, rowText);
       if (ex) { key = ex; direct = true; }
     }
+    // 标签读不到时，看下拉里装的是什么：一对「男 / 女」必然是性别
+    if (!key && el.tagName === 'SELECT') key = optionsKeyOf(el);
 
     if (!key) {
       if (visible(el) && !alreadyFilled(el)) {

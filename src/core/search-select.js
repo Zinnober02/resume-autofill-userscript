@@ -3,6 +3,7 @@
 import { norm } from './rules.js';
 import { sleep, deepQueryAll, visible, isOurUI } from './dom.js';
 import { setVal, bestOptionIndex } from './form-control.js';
+import { visibleTriggerFor } from './cascade.js';
 
 const OPTION_SELECTOR = '[role="option"], .dropdown-menu li a, .dropdown-menu li, .ant-select-item-option, .el-select-dropdown__item, .bs-searchbox ~ .dropdown-menu li a';
 
@@ -62,8 +63,16 @@ function pickOption(list, want) {
 export async function fillSearchSelect(el, value) {
   const want = String(value == null ? '' : value).trim();
   if (!want) return false;
-  const wrap = (el.closest && el.closest('.bootstrap-select')) || el.parentElement;
-  const toggle = wrap && wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
+  // 组件常把原生控件藏起来，只留自己那个按钮。按钮可能在几层之外，往外找一找
+  const trigger = visibleTriggerFor(el);
+  let wrap = (el.closest && el.closest('.bootstrap-select')) || null;
+  if (!wrap && trigger) {
+    let node = el.parentElement;
+    while (node && node !== document.body && !node.contains(trigger)) node = node.parentElement;
+    wrap = node && node !== document.body ? node : trigger.parentElement;
+  }
+  if (!wrap) wrap = el.parentElement;
+  const toggle = trigger || wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
   if (toggle) clickNode(toggle);
   else {
     try { el.focus(); } catch (e) { /* 忽略 */ }

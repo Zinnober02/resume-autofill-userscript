@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.11.3
+// @version      1.12.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -597,6 +597,26 @@
         push(meaningfulLabel(likeLabel(up)));
         up = up.previousElementSibling;
       }
+      if (!parts.length) {
+        const cell = el2.closest && el2.closest("td, th");
+        const table = cell && cell.closest("table");
+        if (cell && table) {
+          const row = cell.parentElement;
+          let headRow = table.querySelector("thead tr");
+          if (!headRow) {
+            const firstRow = table.querySelector("tr");
+            if (firstRow && firstRow !== row) {
+              const cells = Array.prototype.slice.call(firstRow.children);
+              if (cells.length && cells.every((c) => c.tagName === "TH")) headRow = firstRow;
+            }
+          }
+          if (row && headRow && headRow !== row) {
+            const index = Array.prototype.indexOf.call(row.children, cell);
+            const headCell = headRow.children[index];
+            if (headCell) push(meaningfulLabel(visibleText(headCell, 30)));
+          }
+        }
+      }
       if (!parts.length && el2.parentElement) {
         let text = "";
         const kids = el2.parentElement.childNodes;
@@ -925,6 +945,15 @@
   }
 
   // src/core/form-control.js
+  var FIELD_EVENTS = ["input", "keyup", "change", "blur"];
+  function fireEvents(el2) {
+    FIELD_EVENTS.forEach((type) => {
+      try {
+        el2.dispatchEvent(new Event(type, { bubbles: true }));
+      } catch (e) {
+      }
+    });
+  }
   function setVal(el2, value) {
     let proto = HTMLInputElement.prototype;
     if (el2 instanceof HTMLTextAreaElement) proto = HTMLTextAreaElement.prototype;
@@ -932,8 +961,7 @@
     const desc = Object.getOwnPropertyDescriptor(proto, "value");
     if (desc && desc.set) desc.set.call(el2, value);
     else el2.value = value;
-    el2.dispatchEvent(new Event("input", { bubbles: true }));
-    el2.dispatchEvent(new Event("change", { bubbles: true }));
+    fireEvents(el2);
   }
   function bestOptionIndex(select, want, preferEnrolled) {
     const w = norm(want);
@@ -1690,8 +1718,15 @@
   async function fillSearchSelect(el2, value) {
     const want = String(value == null ? "" : value).trim();
     if (!want) return false;
-    const wrap = el2.closest && el2.closest(".bootstrap-select") || el2.parentElement;
-    const toggle = wrap && wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
+    const trigger = visibleTriggerFor(el2);
+    let wrap = el2.closest && el2.closest(".bootstrap-select") || null;
+    if (!wrap && trigger) {
+      let node = el2.parentElement;
+      while (node && node !== document.body && !node.contains(trigger)) node = node.parentElement;
+      wrap = node && node !== document.body ? node : trigger.parentElement;
+    }
+    if (!wrap) wrap = el2.parentElement;
+    const toggle = trigger || wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
     if (toggle) clickNode(toggle);
     else {
       try {
@@ -2025,12 +2060,23 @@
       position: members.findIndex((item) => item.node === el2)
     };
   }
+  function visibleTriggerFor(node) {
+    if (!node || !node.getAttribute) return null;
+    if (visible(node)) return null;
+    let scope = node.parentElement;
+    for (let depth = 0; scope && depth < 4; depth += 1) {
+      const list = scope.querySelectorAll('button, a, [role="button"], [role="combobox"], [data-toggle="dropdown"]');
+      for (let i = 0; i < list.length; i += 1) {
+        const el2 = list[i];
+        if (el2 === node || el2.contains(node)) continue;
+        if (visible(el2)) return el2;
+      }
+      scope = scope.parentElement;
+    }
+    return null;
+  }
   function hasVisibleMirror(node) {
-    if (!node || node.tagName !== "SELECT") return false;
-    const wrap = node.closest && node.closest(".bootstrap-select");
-    if (!wrap) return false;
-    const toggle = wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
-    return !!(toggle && visible(toggle));
+    return !!visibleTriggerFor(node);
   }
   function mirrorText(node) {
     const wrap = node.closest && node.closest(".bootstrap-select");
@@ -2442,6 +2488,37 @@
     return 1;
   }
 
+  // src/core/options-hint.js
+  var ENUMS = [
+    { key: "gender", labels: ["男", "女"], min: 2 },
+    { key: "maritalStatus", labels: ["未婚", "已婚", "离异", "丧偶"], min: 2 },
+    { key: "politicalStatus", labels: ["中共党员", "共青团员", "民主党派", "群众", "预备党员"], min: 2 },
+    { key: "hukouType", labels: ["农业户口", "非农业户口", "居民户口", "城镇户口"], min: 2 }
+  ];
+  function optionsKeyOf(node) {
+    if (!node || node.tagName !== "SELECT" || !node.options) return "";
+    const texts = [];
+    for (let i = 0; i < node.options.length; i += 1) {
+      const t = norm(node.options[i].textContent);
+      if (t && t !== "请选择") texts.push(t);
+    }
+    if (texts.length < 2) return "";
+    let best = "";
+    let bestHits = 1;
+    ENUMS.forEach((spec) => {
+      let hits = 0;
+      spec.labels.forEach((label) => {
+        const l = norm(label);
+        if (texts.some((t) => t === l || t.indexOf(l) >= 0)) hits += 1;
+      });
+      if (hits >= spec.min && hits > bestHits) {
+        bestHits = hits;
+        best = spec.key;
+      }
+    });
+    return best;
+  }
+
   // src/core/filler.js
   var PREREQUISITE = {
     eduEnd: "eduStart",
@@ -2625,9 +2702,19 @@
       st.manual.push(name + "：这个控件要填具体时刻，资料里没有，请手动填写");
       return;
     }
+    const wasEmpty = /ng-empty/.test(String(el2.className || ""));
     setVal(el2, out);
-    if (!String(el2.value || "").trim()) {
+    const back = String(el2.value || "").trim();
+    if (!back) {
       st.manual.push(name + "：控件不接受这个格式，请手动填写");
+      return;
+    }
+    if (back !== out && isHintText(el2, back)) {
+      st.manual.push(name + "：写进去的值被换回了提示文字，请手动填写");
+      return;
+    }
+    if (wasEmpty && /ng-empty/.test(String(el2.className || ""))) {
+      st.manual.push(name + "：页面没有接受这个值，请手动填写");
       return;
     }
     st.count += 1;
@@ -2846,6 +2933,7 @@
           direct = true;
         }
       }
+      if (!key && el2.tagName === "SELECT") key = optionsKeyOf(el2);
       if (!key) {
         if (visible(el2) && !alreadyFilled(el2)) {
           const d = describe(el2) || attr.slice(0, 30);
