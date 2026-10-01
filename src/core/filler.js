@@ -9,7 +9,10 @@ import {
   groupOf, DATE_KEYS, ADDRESS_KEYS, valueForField, matchExtra, formatValue,
   splitDateTime, FIELD_NAMES,
 } from './value.js';
-import { splitAddress, addressRole, assignRoles, fillAddressSegment } from './address.js';
+import { cascadeValues, valueForRole, addressRole, ROLE_NAMES } from './address.js';
+import {
+  detectCascade, cascadePositionOf, hasVisibleMirror, fillCascade, fillCascadePanel,
+} from './cascade.js';
 import { isSearchSelect, fillSearchSelect } from './search-select.js';
 import { fillFloatingPicker } from './floating-picker.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
@@ -55,12 +58,13 @@ export function highlight(el) {
 
 // 地址下拉按自己的角色取一段：省的框给省，市的框给市，区县的框给区县。
 // 看不出角色时（「籍贯」这种整体字段）按省处理
+function roleText(list) {
+  return list.map((role) => ROLE_NAMES[role] || role).join(' / ');
+}
+
 function addressValueFor(el, value) {
-  const addr = splitAddress(value);
-  const role = addressRole(el);
-  if (role === 'city') return addr.city || addr.province;
-  if (role === 'district') return addr.district || addr.city || addr.province;
-  return addr.province || String(value || '').trim();
+  const values = cascadeValues(value);
+  return valueForRole(values, addressRole(el) || 'province') || values.raw;
 }
 
 // 手机号前面常常先有一个国家 / 地区代码下拉，电信上就是这样
@@ -140,6 +144,18 @@ async function applyValue(el, key, value, options, profile, st) {
     return;
   }
 
+  // 不是表单控件做成的下拉（div 加 role=combobox 那类）：点开浮层选候选
+  if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && el.tagName !== 'SELECT') {
+    if (await fillFloatingPicker(el, value)) {
+      st.count += 1;
+      st.filled.push(name);
+      if (options.highlight) highlight(el);
+    } else {
+      st.manual.push(name + '：弹出层里没有匹配项，请手动选');
+    }
+    return;
+  }
+
   // 只读的输入框：日期控件走日期那一套，其余多半是「点开弹层选候选」的展示框
   if (el.tagName === 'INPUT' && el.readOnly) {
     if (isDatePicker(el)) {
@@ -155,6 +171,17 @@ async function applyValue(el, key, value, options, profile, st) {
     if (DATE_KEYS[key]) {
       st.manual.push(name + '：只读的日期控件，请手动选');
       return;
+    }
+    // 地址类字段在只读框上可能是「一列一级」的多级面板
+    if (ADDRESS_KEYS[key]) {
+      const panelRes = await fillCascadePanel(el, cascadeValues(value), { timeout: 2500 });
+      if (panelRes.written) {
+        st.count += panelRes.written;
+        st.filled.push(name);
+        if (options.highlight) highlight(el);
+        if (panelRes.missing.length) st.manual.push(name + '：' + roleText(panelRes.missing) + ' 请手动补全');
+        return;
+      }
     }
     if (await fillFloatingPicker(el, value)) {
       st.count += 1;
@@ -219,7 +246,7 @@ function pairedStart(el, key) {
 export async function runFill(profile, opts) {
   const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true, fillDatePickers: true }, opts || {});
   const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0 };
-  const nodes = deepQueryAll('input, textarea, select');
+  const nodes = deepQueryAll('input, textarea, select, [role="combobox"]');
   const handled = new Set();
   const segments = new Map();
 
@@ -230,7 +257,11 @@ export async function runFill(profile, opts) {
     if (el.getAttribute('aria-hidden') === 'true') return true;
     // 页面上看不见的控件不填：弹层里的搜索框、隐藏的模型输入框都在这一类。
     // 只读的输入框不在这里排除，它可能是「点开才出候选」的展示框
-    if (!visible(el)) return true;
+    if (!visible(el)) {
+      // 组件把原生控件藏起来、只留自己那个按钮时，这个控件仍然要处理
+      if (hasVisibleMirror(el)) return false;
+      return true;
+    }
     return false;
   };
 
@@ -272,51 +303,37 @@ export async function runFill(profile, opts) {
     return out;
   };
 
-  const addressGroupCache = new Map();
-  const addressGroupAt = (el) => {
-    if (addressGroupCache.has(el)) return addressGroupCache.get(el);
-    const result = computeAddressGroup(el);
-    addressGroupCache.set(el, result);
-    return result;
+  // 分级字段（省 / 市 / 区县这类）走四段管线：认组、分角色、逐级驱动、等就绪
+  const cascadeKeyCache = new Map();
+  const classifyForCascade = (node) => {
+    if (cascadeKeyCache.has(node)) return cascadeKeyCache.get(node);
+    const k = pickKey({
+      label: labelText(node),
+      attr: attrText(node),
+      block: sectionBlockType(node),
+      hint: '',
+      allowHint: false,
+    });
+    cascadeKeyCache.set(node, k);
+    return k;
   };
 
-  const computeAddressGroup = (el) => {
-    const scope = sectionContainer(el) || rowContainer(el) || document;
-    const list = classifyIn(scope);
-    const idx = list.findIndex((item) => item.node === el);
-    if (idx < 0) return null;
-    const tag = el.tagName;
-    let start = idx;
-    let end = idx;
-    while (start > 0 && list[start - 1].node.tagName === tag) start -= 1;
-    while (end < list.length - 1 && list[end + 1].node.tagName === tag) end += 1;
-    const seg = list.slice(start, end + 1);
-    let groupKey = '';
-    for (let i = 0; i < seg.length; i += 1) {
-      if (seg[i].key && ADDRESS_KEYS[seg[i].key]) { groupKey = seg[i].key; break; }
-    }
-    if (!groupKey) return null;
-    // 组里只留「没有字段名的」和「就是这一个地址字段的」，别把旁边的学历、性别也拉进来
-    const nodes = seg.filter((item) => !item.key || item.key === groupKey).map((item) => item.node);
-    if (!nodes.length || nodes.length > 3) return null;
-    return { key: groupKey, nodes, roles: assignRoles(nodes) };
-  };
-
-  // 省 / 市 / 区分开的下拉或输入框：整组一起填，选完一级等下一级的选项出来
-  const fillAddressGroup = async (group, key) => {
-    const name = FIELD_NAMES[key] || key;
-    const address = splitAddress(valueForField(key, profile, 1));
-    if (!address.province && !address.city) return false;
-    const res = await fillAddressSegment(group, address);
+  const runCascade = async (group) => {
+    const label = FIELD_NAMES[group.key] || group.key;
+    const values = cascadeValues(valueForField(group.key, profile, 1));
+    if (!values.province && !values.city && !values.raw) return false;
+    const res = await fillCascade(group, values, { timeout: 6000 });
     group.nodes.forEach((n) => handled.add(n));
     if (res.written) {
       st.count += res.written;
-      st.filled.push(name + '（省 / 市 / 区分开填写）');
+      st.filled.push(label + '（分级选择）');
       if (options.highlight) group.nodes.forEach((n) => highlight(n));
     }
-    if (res.blocked) st.manual.push(name + '：省 / 市 / 区控件没有能选中的值，请手动选');
-    return res.written > 0 || res.blocked > 0;
+    if (res.blocked.length) st.manual.push(label + '：' + roleText(res.blocked) + ' 没有选中，请手动选');
+    if (res.missing.length) st.manual.push(label + '：这一栏没有 ' + roleText(res.missing) + ' 控件，请手动补全');
+    return res.written > 0 || res.blocked.length > 0 || res.missing.length > 0;
   };
+
 
   // 年 / 月 / 日 分开的下拉框或输入框：整组一起写
   const fillSegment = (el, group, rowKey) => {
@@ -422,11 +439,16 @@ export async function runFill(profile, opts) {
     }
     let key = pickKey({ label, attr, block, hint: fieldHint(el), allowHint: !label && !attr });
 
-    // 地址字段先当成一组处理：第一级那个下拉往往没有字段名，单独看是认不出来的。
+    // 分级字段先按一组处理：第一级那个下拉往往没有字段名，单独看认不出来。
     // 组里只有一个控件、而且它自己有字段名时，交回下面按普通字段处理
-    const addrGroup = addressGroupAt(el);
-    if (addrGroup && (addrGroup.nodes.length > 1 || !key)) {
-      if (await fillAddressGroup(addrGroup, addrGroup.key)) continue;
+    const cascade = detectCascade(el, classifyForCascade);
+    if (cascade && (cascade.nodes.length > 1 || !key)) {
+      if (await runCascade(cascade)) continue;
+    }
+    // 组识别不出来时，第二级及以后的控件不拿第一级的值去试
+    if (key && ADDRESS_KEYS[key] && cascadePositionOf(el) > 0) {
+      st.manual.push((FIELD_NAMES[key] || key) + '：这一级要等上一级选完，请手动选');
+      continue;
     }
 
     let direct = false;

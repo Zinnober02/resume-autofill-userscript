@@ -277,5 +277,12 @@ export function visible(el) {
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return false;
   const cs = getComputedStyle(el);
-  return cs.display !== 'none' && cs.visibility !== 'hidden';
+  if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+  // 祖先写着 display:none 时自己也就不显示；有的环境不计算继承，这里单独看一眼
+  let node = el.parentElement;
+  while (node && node.nodeType === 1) {
+    if (node.style && node.style.display === 'none') return false;
+    node = node.parentElement;
+  }
+  return true;
 }

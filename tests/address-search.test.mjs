@@ -10,7 +10,7 @@ test('整串地址拆成省、市、区与详细地址', () => {
   assert.deepEqual(splitAddress('浙江省杭州市西湖区'), { province: '浙江省', city: '杭州市', district: '西湖区', detail: '' });
   assert.deepEqual(splitAddress('北京市朝阳区'), { province: '北京市', city: '', district: '朝阳区', detail: '' });
   assert.deepEqual(splitAddress('浙江省杭州市西湖区文三路 100 号'), { province: '浙江省', city: '杭州市', district: '西湖区', detail: '文三路 100 号' });
-  assert.deepEqual(splitAddress('浙江杭州'), { province: '', city: '', district: '', detail: '浙江杭州' });
+  assert.deepEqual(splitAddress('浙江杭州'), { province: '浙江省', city: '杭州市', district: '', detail: '' });
   assert.deepEqual(splitAddress(''), { province: '', city: '', district: '', detail: '' });
 });
 
@@ -169,7 +169,9 @@ test('同栏两个下拉、第一级没有字段名时，第一个填省第二�
   const report = await runFill(window, { hometown: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
   assert.equal(field(dom, 'select[name="a1"]').value, '浙江省');
   assert.equal(field(dom, 'select[name="a2"]').value, '杭州市');
-  assert.deepEqual(Array.from(report.manual), []);
+  const manual = Array.from(report.manual);
+  assert.equal(manual.length, 1, '页面只有两级，区县要提示手动补');
+  assert.ok(manual[0].indexOf('区 / 县') >= 0);
 });
 
 test('按选项内容判断层级：顺序反了也不会把市当成省', async () => {
@@ -185,7 +187,9 @@ test('按选项内容判断层级：顺序反了也不会把市当成省', async
   const report = await runFill(window, { hometown: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
   assert.equal(field(dom, 'select[name="a1"]').value, '杭州市');
   assert.equal(field(dom, 'select[name="a2"]').value, '浙江省');
-  assert.deepEqual(Array.from(report.manual), []);
+  const manual = Array.from(report.manual);
+  assert.equal(manual.length, 1, '页面只有两级，区县要提示手动补');
+  assert.ok(manual[0].indexOf('区 / 县') >= 0);
 });
 
 test('只有市与区两个下拉、没有省时也能各归各位', async () => {
@@ -201,7 +205,9 @@ test('只有市与区两个下拉、没有省时也能各归各位', async () =>
   const report = await runFill(window, { hukou: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
   assert.equal(field(dom, 'select[name="c"]').value, '杭州市');
   assert.equal(field(dom, 'select[name="d"]').value, '西湖区');
-  assert.deepEqual(Array.from(report.manual), []);
+  const manual = Array.from(report.manual);
+  assert.equal(manual.length, 1, '页面没有省控件，省要提示手动补');
+  assert.match(manual[0], /省/);
 });
 
 test('下拉里确实没有能对上的选项时记进需要手动处理', async () => {

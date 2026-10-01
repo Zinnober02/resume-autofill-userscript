@@ -59,6 +59,9 @@ https://raw.githubusercontent.com/Zinnober02/resume-autofill-userscript/main/dis
 | `src/core/date-widget.js` | 年 / 月 / 日 分开的控件组与组件库日期选择器 |
 | `src/core/search-select.js` | 可搜索下拉：点开、输入关键词、再点候选 |
 | `src/core/floating-picker.js` | 弹层选择控件（只读展示框 + 候选浮层），按行为与结构识别 |
+| `src/core/cascade.js` | 分级控件：认组、分角色、逐级驱动、等就绪 |
+| `src/core/region-names.js` | 行政区名的归一化与层级判断 |
+| `src/core/wait.js` | 等条件成立的通用等待 |
 | `src/core/address.js` | 省 / 市 / 区 地址的分段与填充 |
 | `src/core/regions.js` | 内置的省市区数据（来自 area-data，MIT） |
 | `src/core/blocks.js` | 经历区块的分段识别 |

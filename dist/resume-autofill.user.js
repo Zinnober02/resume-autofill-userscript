@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.10.0
+// @version      1.11.0
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -717,7 +717,13 @@
     const r = el2.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return false;
     const cs = getComputedStyle(el2);
-    return cs.display !== "none" && cs.visibility !== "hidden";
+    if (cs.display === "none" || cs.visibility === "hidden") return false;
+    let node = el2.parentElement;
+    while (node && node.nodeType === 1) {
+      if (node.style && node.style.display === "none") return false;
+      node = node.parentElement;
+    }
+    return true;
   }
 
   // src/core/profile-schema.js
@@ -959,91 +965,6 @@
     } catch (e) {
       return false;
     }
-  }
-
-  // src/core/search-select.js
-  var OPTION_SELECTOR = '[role="option"], .dropdown-menu li a, .dropdown-menu li, .ant-select-item-option, .el-select-dropdown__item, .bs-searchbox ~ .dropdown-menu li a';
-  function isSearchSelect(el2) {
-    if (!el2 || el2.tagName !== "SELECT") return false;
-    if (String(el2.getAttribute("data-live-search")) === "true") return true;
-    return !!(el2.closest && el2.closest(".bootstrap-select"));
-  }
-  function clickNode(node) {
-    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  }
-  function optionsIn(wrap) {
-    const list = deepQueryAll(OPTION_SELECTOR);
-    const out = [];
-    for (let i = 0; i < list.length; i += 1) {
-      const node = list[i];
-      if (isOurUI(node)) continue;
-      if (wrap && !wrap.contains(node)) continue;
-      if (!visible(node)) continue;
-      out.push(node);
-    }
-    return out;
-  }
-  function pickOption(list, want) {
-    const w = norm(want);
-    const hits = [];
-    for (let i = 0; i < list.length; i += 1) {
-      const node = list[i];
-      const text = norm(node.textContent);
-      if (!text || text === "请选择") continue;
-      if (/no-results|search-no|model-close/.test(String(node.className || ""))) continue;
-      let score = 0;
-      if (text === w) score = 100;
-      else if (text.indexOf(w) >= 0) score = 60;
-      else if (w.indexOf(text) >= 0) score = 40;
-      if (score) hits.push({ node, score });
-    }
-    if (!hits.length) return null;
-    let bestScore = 0;
-    for (let i = 0; i < hits.length; i += 1) bestScore = Math.max(bestScore, hits[i].score);
-    const top = hits.filter((h) => h.score === bestScore).map((h) => h.node);
-    for (let i = 0; i < top.length; i += 1) {
-      const node = top[i];
-      if (!top.some((other) => other !== node && node.contains(other))) return node;
-    }
-    return top[0];
-  }
-  async function fillSearchSelect(el2, value) {
-    const want = String(value == null ? "" : value).trim();
-    if (!want) return false;
-    const wrap = el2.closest && el2.closest(".bootstrap-select") || el2.parentElement;
-    const toggle = wrap && wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
-    if (toggle) clickNode(toggle);
-    else {
-      try {
-        el2.focus();
-      } catch (e) {
-      }
-    }
-    await sleep(120);
-    const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
-    if (box) setVal(box, want);
-    for (let i = 0; i < 12; i += 1) {
-      await sleep(180);
-      const idx = bestOptionIndex(el2, want, false);
-      if (idx >= 0) {
-        setVal(el2, el2.options[idx].value);
-        return true;
-      }
-      const hit = pickOption(optionsIn(wrap), want);
-      if (!hit) continue;
-      clickNode(hit);
-      for (let k = 0; k < 8; k += 1) {
-        await sleep(80);
-        if (el2.tagName !== "SELECT") return true;
-        if (String(el2.value || "").trim()) return true;
-      }
-      return el2.tagName !== "SELECT";
-    }
-    if (box) setVal(box, "");
-    if (toggle) clickNode(toggle);
-    return false;
   }
 
   // src/core/regions.js
@@ -1465,20 +1386,88 @@
     "910000": { "810000": "香港特别行政区", "820000": "澳门特别行政区" }
   };
 
-  // src/core/address.js
+  // src/core/region-names.js
+  var SUFFIXES = [
+    "特别行政区",
+    "自治区",
+    "自治州",
+    "自治县",
+    "自治旗",
+    "维吾尔",
+    "壮族",
+    "回族",
+    "藏族",
+    "蒙古族",
+    "土家族",
+    "苗族",
+    "侗族",
+    "布依族",
+    "彝族",
+    "白族",
+    "傣族",
+    "哈尼族",
+    "朝鲜族",
+    "满族",
+    "哈萨克",
+    "地区",
+    "省",
+    "市",
+    "区",
+    "县",
+    "盟",
+    "旗"
+  ].map((s) => norm(s));
+  function normalizeRegion(name) {
+    let text = norm(name);
+    if (!text) return "";
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < SUFFIXES.length; i += 1) {
+        const suffix = SUFFIXES[i];
+        if (suffix && text.length > suffix.length && text.endsWith(suffix)) {
+          text = text.slice(0, -suffix.length);
+          changed = true;
+          break;
+        }
+      }
+    }
+    return text;
+  }
+  var PROVINCE_ALIASES = /* @__PURE__ */ new Map();
+  var CITY_ALIASES = /* @__PURE__ */ new Map();
+  var DISTRICT_ALIASES = /* @__PURE__ */ new Map();
+  function addAlias(map, full) {
+    if (!full) return;
+    map.set(full, full);
+    const short = normalizeRegion(full);
+    if (short && !map.has(short)) map.set(short, full);
+  }
+  function provinceAliases() {
+    return PROVINCE_ALIASES;
+  }
+  function cityAliases() {
+    return CITY_ALIASES;
+  }
+  function districtAliases() {
+    return DISTRICT_ALIASES;
+  }
   var PROVINCE_NAMES = /* @__PURE__ */ new Set();
   var CITY_NAMES = /* @__PURE__ */ new Set();
   var DISTRICT_NAMES = /* @__PURE__ */ new Set();
   (function buildRegionNames() {
     const provinces = REGIONS["86"] || {};
-    Object.keys(provinces).forEach((code) => {
-      PROVINCE_NAMES.add(norm(provinces[code]));
-      const cities = REGIONS[code] || {};
+    Object.keys(provinces).forEach((provinceCode) => {
+      PROVINCE_NAMES.add(normalizeRegion(provinces[provinceCode]));
+      addAlias(PROVINCE_ALIASES, provinces[provinceCode]);
+      const cities = REGIONS[provinceCode] || {};
       Object.keys(cities).forEach((cityCode) => {
-        CITY_NAMES.add(norm(cities[cityCode]));
+        CITY_NAMES.add(normalizeRegion(cities[cityCode]));
+        addAlias(CITY_ALIASES, cities[cityCode]);
         const districts = REGIONS[cityCode] || {};
         Object.keys(districts).forEach((areaCode) => {
-          DISTRICT_NAMES.add(norm(districts[areaCode]));
+          DISTRICT_NAMES.add(normalizeRegion(districts[areaCode]));
+          addAlias(DISTRICT_ALIASES, districts[areaCode]);
         });
       });
     });
@@ -1487,7 +1476,7 @@
     if (!node || node.tagName !== "SELECT" || !node.options) return "";
     const texts = [];
     for (let i = 0; i < node.options.length; i += 1) {
-      const t = norm(node.options[i].textContent);
+      const t = normalizeRegion(node.options[i].textContent);
       if (t) texts.push(t);
     }
     if (texts.length < 2) return "";
@@ -1505,28 +1494,62 @@
     if (best === city) return "city";
     return "district";
   }
+
+  // src/core/address.js
   var PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
   var CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;
   var AREA_RE = /^(.{1,12}?(?:自治县|自治旗|区|县|旗|市))/;
-  function splitAddress(value) {
-    let rest = String(value == null ? "" : value).trim();
+  function levelCandidates(text, aliases) {
+    const out = [];
+    const limit = Math.min(text.length, 12);
+    for (let len = limit; len >= 2; len -= 1) {
+      const full = aliases.get(text.slice(0, len));
+      if (full) out.push({ full, length: len });
+    }
+    return out;
+  }
+  function splitByPattern(text) {
     const out = { province: "", city: "", district: "", detail: "" };
+    let rest = text;
     const m1 = rest.match(PROVINCE_RE);
     if (m1) {
       out.province = m1[1];
-      rest = rest.slice(out.province.length).trim();
+      rest = rest.slice(m1[1].length).trim();
     }
     const m2 = rest.match(CITY_RE);
     if (m2) {
       out.city = m2[1];
-      rest = rest.slice(out.city.length).trim();
+      rest = rest.slice(m2[1].length).trim();
     }
     const m3 = rest.match(AREA_RE);
     if (m3) {
       out.district = m3[1];
-      rest = rest.slice(out.district.length).trim();
+      rest = rest.slice(m3[1].length).trim();
     }
     out.detail = rest;
+    return out;
+  }
+  function splitAddress(value) {
+    const text = String(value == null ? "" : value).trim();
+    const out = { province: "", city: "", district: "", detail: text };
+    if (!text) return out;
+    const none = { full: "", length: 0 };
+    let best = null;
+    levelCandidates(text, provinceAliases()).concat([none]).forEach((p) => {
+      const afterP = text.slice(p.length);
+      levelCandidates(afterP, cityAliases()).concat([none]).forEach((c) => {
+        const afterC = afterP.slice(c.length);
+        levelCandidates(afterC, districtAliases()).concat([none]).forEach((a) => {
+          const total = p.length + c.length + a.length;
+          if (!best || total > best.total) best = { p, c, a, total };
+        });
+      });
+    });
+    if (!best || best.total === 0) return splitByPattern(text);
+    out.province = best.p.full;
+    out.city = best.c.full;
+    out.district = best.a.full;
+    out.detail = text.slice(best.total).trim();
     return out;
   }
   function addressRole(el2) {
@@ -1534,18 +1557,31 @@
     const attr = norm(String(el2.getAttribute("name") || "") + String(el2.getAttribute("id") || "") + String(el2.getAttribute("placeholder") || ""));
     if (/province|sheng/.test(attr)) return "province";
     if (/city|shi/.test(attr)) return "city";
-    if (/district|area|county|qu|area/.test(attr)) return "district";
+    if (/district|area|county|qu/.test(attr)) return "district";
     if (/^省$|省份|所在省|请选择省/.test(label)) return "province";
     if (/^市$|所在市|请选择市/.test(label)) return "city";
     if (/^区$|^县$|区县|所在区|请选择区|请选择县/.test(label)) return "district";
     return "";
   }
+  function levelHintOf(el2) {
+    const text = norm(String(el2.id || "") + " " + String(el2.getAttribute("name") || ""));
+    if (/firstlevl|firstlevel|level1|parent|province/.test(text)) return "province";
+    if (/secondlevl|secondlevel|level2|child|city/.test(text)) return "city";
+    if (/thirdlevl|thirdlevel|level3|district|county|area/.test(text)) return "district";
+    return "";
+  }
   var ADDRESS_ROLES = ["province", "city", "district"];
   function assignRoles(nodes) {
-    const roles = nodes.map((node) => addressRole(node) || regionLevelOf(node));
+    const roles = [];
     const taken = {};
-    roles.forEach((role) => {
-      if (role) taken[role] = 1;
+    nodes.forEach((node) => {
+      const guess = addressRole(node) || regionLevelOf(node) || levelHintOf(node);
+      if (guess && !taken[guess]) {
+        taken[guess] = 1;
+        roles.push(guess);
+      } else {
+        roles.push("");
+      }
     });
     const free = ADDRESS_ROLES.filter((role) => !taken[role]);
     for (let i = 0; i < roles.length; i += 1) {
@@ -1553,38 +1589,108 @@
     }
     return roles;
   }
-  async function bestOptionWithWait(select, want, tries) {
-    const rounds = tries || 4;
-    for (let i = 0; i < rounds; i += 1) {
-      const idx = bestOptionIndex(select, want, false);
-      if (idx >= 0) return idx;
-      await sleep(200);
-    }
-    return -1;
+  var MUNICIPALITIES = ["北京", "上海", "天津", "重庆"];
+  function isMunicipality(name) {
+    const t = norm(name);
+    if (!t) return false;
+    return MUNICIPALITIES.some((m) => t.indexOf(m) === 0);
   }
-  async function fillAddressSegment(group, address) {
-    let written = 0;
-    let blocked = 0;
-    for (let i = 0; i < group.nodes.length; i += 1) {
-      const node = group.nodes[i];
-      const want = address[group.roles[i]];
-      if (!want) continue;
-      if (node.tagName === "SELECT") {
-        const idx = await bestOptionWithWait(node, want);
-        if (idx >= 0) {
-          setVal(node, node.options[idx].value);
-        } else if (isSearchSelect(node) && await fillSearchSelect(node, want)) {
-        } else {
-          blocked += 1;
-          continue;
-        }
-      } else {
-        setVal(node, want);
-      }
-      written += 1;
-      await sleep(150);
+  function valueForRole(values, role) {
+    if (!values) return "";
+    if (role === "province") return values.province || "";
+    if (role === "city") return values.city || (isMunicipality(values.province) ? values.province : "");
+    if (role === "district") return values.district || "";
+    return "";
+  }
+  function cascadeValues(raw) {
+    const addr = splitAddress(raw);
+    return { province: addr.province, city: addr.city, district: addr.district, detail: addr.detail, raw: String(raw == null ? "" : raw) };
+  }
+  var ROLE_NAMES = { province: "省", city: "市", district: "区 / 县" };
+
+  // src/core/search-select.js
+  var OPTION_SELECTOR = '[role="option"], .dropdown-menu li a, .dropdown-menu li, .ant-select-item-option, .el-select-dropdown__item, .bs-searchbox ~ .dropdown-menu li a';
+  function isSearchSelect(el2) {
+    if (!el2 || el2.tagName !== "SELECT") return false;
+    if (String(el2.getAttribute("data-live-search")) === "true") return true;
+    return !!(el2.closest && el2.closest(".bootstrap-select"));
+  }
+  function clickNode(node) {
+    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }
+  function optionsIn(wrap) {
+    const list = deepQueryAll(OPTION_SELECTOR);
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      if (isOurUI(node)) continue;
+      if (wrap && !wrap.contains(node)) continue;
+      if (!visible(node)) continue;
+      out.push(node);
     }
-    return { written, blocked };
+    return out;
+  }
+  function pickOption(list, want) {
+    const w = norm(want);
+    const hits = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      const text = norm(node.textContent);
+      if (!text || text === "请选择") continue;
+      if (/no-results|search-no|model-close/.test(String(node.className || ""))) continue;
+      let score = 0;
+      if (text === w) score = 100;
+      else if (text.indexOf(w) >= 0) score = 60;
+      else if (w.indexOf(text) >= 0) score = 40;
+      if (score) hits.push({ node, score });
+    }
+    if (!hits.length) return null;
+    let bestScore = 0;
+    for (let i = 0; i < hits.length; i += 1) bestScore = Math.max(bestScore, hits[i].score);
+    const top = hits.filter((h) => h.score === bestScore).map((h) => h.node);
+    for (let i = 0; i < top.length; i += 1) {
+      const node = top[i];
+      if (!top.some((other) => other !== node && node.contains(other))) return node;
+    }
+    return top[0];
+  }
+  async function fillSearchSelect(el2, value) {
+    const want = String(value == null ? "" : value).trim();
+    if (!want) return false;
+    const wrap = el2.closest && el2.closest(".bootstrap-select") || el2.parentElement;
+    const toggle = wrap && wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
+    if (toggle) clickNode(toggle);
+    else {
+      try {
+        el2.focus();
+      } catch (e) {
+      }
+    }
+    await sleep(120);
+    const box = wrap && wrap.querySelector('.bs-searchbox input, input[type="search"]');
+    if (box) setVal(box, want);
+    for (let i = 0; i < 12; i += 1) {
+      await sleep(180);
+      const idx = bestOptionIndex(el2, want, false);
+      if (idx >= 0) {
+        setVal(el2, el2.options[idx].value);
+        return true;
+      }
+      const hit = pickOption(optionsIn(wrap), want);
+      if (!hit) continue;
+      clickNode(hit);
+      for (let k = 0; k < 8; k += 1) {
+        await sleep(80);
+        if (el2.tagName !== "SELECT") return true;
+        if (String(el2.value || "").trim()) return true;
+      }
+      return el2.tagName !== "SELECT";
+    }
+    if (box) setVal(box, "");
+    if (toggle) clickNode(toggle);
+    return false;
   }
 
   // src/core/floating-picker.js
@@ -1611,7 +1717,7 @@
       const child = kids[i];
       if (!visible(child)) continue;
       const text = norm(child.textContent);
-      if (!text || text.length > 80) continue;
+      if (text.length > 80) continue;
       const key = child.tagName + "|" + String(child.className || "");
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(child);
@@ -1624,14 +1730,30 @@
   }
   function candidateItems(root) {
     let best = [];
+    let bestScore = -1;
     const nodes = [root];
     const inside = root.querySelectorAll ? root.querySelectorAll("*") : [];
     for (let i = 0; i < inside.length; i += 1) nodes.push(inside[i]);
     for (let i = 0; i < nodes.length; i += 1) {
       const items = sameStructureChildren(nodes[i]);
-      if (items.length > best.length) best = items;
+      const texts = items.map((item) => norm(item.textContent)).filter(Boolean);
+      if (texts.length < MIN_ITEMS) continue;
+      let total = 0;
+      for (let k = 0; k < texts.length; k += 1) total += texts[k].length;
+      const score = texts.length * 10 - total / texts.length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = items;
+      }
     }
     return best;
+  }
+  function panelColumns(panel) {
+    const cols = sameStructureChildren(panel);
+    if (cols.length < 2) return null;
+    const hasItems = cols.some((col) => sameStructureChildren(col).length > 0);
+    if (!hasItems) return null;
+    return cols;
   }
   function clickTargetFor(node) {
     const inner = node.querySelector && node.querySelector('a, button, [role="option"], [role="menuitem"]');
@@ -1663,6 +1785,13 @@
     if (node.querySelector && node.querySelector('input, textarea, [role="option"], [role="listbox"]')) return true;
     return sameStructureChildren(node).length >= MIN_ITEMS;
   }
+  function whollyFresh(node, before) {
+    const all = node.querySelectorAll ? node.querySelectorAll("*") : [];
+    for (let i = 0; i < all.length; i += 1) {
+      if (before.has(all[i])) return false;
+    }
+    return true;
+  }
   async function openPanel(el2) {
     const before = snapshotVisible();
     clickNode2(el2);
@@ -1677,14 +1806,17 @@
       }
       const hits = [];
       for (let i = 0; i < fresh.length; i += 1) {
-        if (looksLikePanel(fresh[i])) hits.push(fresh[i]);
+        const node = fresh[i];
+        if (!looksLikePanel(node)) continue;
+        if (!whollyFresh(node, before)) continue;
+        hits.push(node);
       }
       if (!hits.length) continue;
-      for (let i = hits.length - 1; i >= 0; i -= 1) {
+      for (let i = 0; i < hits.length; i += 1) {
         const node = hits[i];
-        if (!hits.some((other) => other !== node && node.contains(other))) return { panel: node };
+        if (!hits.some((other) => other !== node && other.contains(node))) return { panel: node };
       }
-      return { panel: hits[hits.length - 1] };
+      return { panel: hits[0] };
     }
     return null;
   }
@@ -1699,12 +1831,16 @@
     }
     return null;
   }
+  function shownText(el2) {
+    if (el2.tagName === "INPUT" || el2.tagName === "TEXTAREA") return String(el2.value || "");
+    return String(el2.textContent || "");
+  }
   async function waitPicked(el2, want) {
     const w = norm(want);
     for (let i = 0; i < 10; i += 1) {
       await sleep(120);
-      const value = String(el2.value || "").trim();
-      if (value && norm(value).indexOf(w) >= 0) return true;
+      const value = norm(shownText(el2));
+      if (value && value.indexOf(w) >= 0) return true;
     }
     return false;
   }
@@ -1725,6 +1861,238 @@
     }
     clickNode2(el2);
     return false;
+  }
+
+  // src/core/wait.js
+  function waitFor(predicate, options) {
+    const opts = options || {};
+    const timeout = opts.timeout == null ? 5e3 : opts.timeout;
+    const interval = opts.interval == null ? 60 : opts.interval;
+    return new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      let observer = null;
+      let deadline = null;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        if (timer) clearInterval(timer);
+        if (deadline) clearTimeout(deadline);
+        if (observer) observer.disconnect();
+        resolve(value == null ? null : value);
+      };
+      const check = () => {
+        let value = null;
+        try {
+          value = predicate();
+        } catch (e) {
+          value = null;
+        }
+        if (value) finish(value);
+      };
+      timer = setInterval(check, interval);
+      deadline = setTimeout(() => finish(null), timeout);
+      if (typeof MutationObserver === "function" && opts.root) {
+        try {
+          observer = new MutationObserver(check);
+          observer.observe(opts.root, { childList: true, subtree: true, attributes: true });
+        } catch (e) {
+          observer = null;
+        }
+      }
+      check();
+    });
+  }
+
+  // src/core/cascade.js
+  var MAX_LEVELS = 3;
+  function isCascadeKey(key) {
+    return !!ADDRESS_KEYS[key];
+  }
+  function selectableControls(scope) {
+    const out = [];
+    const list = scope.querySelectorAll("input, select");
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      if (isOurUI(node) || node.disabled) continue;
+      const t = (node.type || "").toLowerCase();
+      if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") continue;
+      if (t === "file" || t === "checkbox" || t === "radio") continue;
+      if (node.tagName !== "INPUT" && node.tagName !== "SELECT" && node.getAttribute("role") !== "combobox") continue;
+      out.push(node);
+    }
+    return out;
+  }
+  function cascadeScope(el2) {
+    const tag = el2.tagName;
+    let node = el2;
+    for (let depth = 0; depth < 8 && node && node.parentElement; depth += 1) {
+      const parent = node.parentElement;
+      if (!parent || parent === document.body || parent === document.documentElement) break;
+      const hasSibling = Array.prototype.some.call(parent.children, (child) => {
+        if (child === node) return false;
+        if (child.tagName === tag) return true;
+        return !!(child.querySelector && child.querySelector(tag));
+      });
+      if (hasSibling) return parent;
+      node = parent;
+    }
+    return sectionContainer(el2);
+  }
+  function cascadePositionOf(el2) {
+    const scope = cascadeScope(el2);
+    if (!scope) return 0;
+    const list = selectableControls(scope).filter((node) => node.tagName === el2.tagName);
+    const idx = list.indexOf(el2);
+    return idx < 0 ? 0 : idx;
+  }
+  function detectCascade(el2, classify) {
+    if (!el2 || el2.tagName !== "SELECT" && el2.tagName !== "INPUT") return null;
+    const scope = cascadeScope(el2);
+    if (!scope) return null;
+    const list = selectableControls(scope).map((node) => ({ node, key: classify(node) }));
+    const idx = list.findIndex((item) => item.node === el2);
+    if (idx < 0) return null;
+    const tag = el2.tagName;
+    let start = idx;
+    let end = idx;
+    while (start > 0 && list[start - 1].node.tagName === tag) start -= 1;
+    while (end < list.length - 1 && list[end + 1].node.tagName === tag) end += 1;
+    const seg = list.slice(start, end + 1);
+    let groupKey = "";
+    for (let i = 0; i < seg.length; i += 1) {
+      if (seg[i].key && isCascadeKey(seg[i].key)) {
+        groupKey = seg[i].key;
+        break;
+      }
+    }
+    if (!groupKey) return null;
+    const members = seg.filter((item) => !item.key || item.key === groupKey);
+    if (!members.length || members.length > MAX_LEVELS) return null;
+    const nodes = members.map((item) => item.node);
+    return {
+      key: groupKey,
+      nodes,
+      roles: assignRoles(nodes),
+      position: members.findIndex((item) => item.node === el2)
+    };
+  }
+  function hasVisibleMirror(node) {
+    if (!node || node.tagName !== "SELECT") return false;
+    const wrap = node.closest && node.closest(".bootstrap-select");
+    if (!wrap) return false;
+    const toggle = wrap.querySelector('button.dropdown-toggle, [data-toggle="dropdown"]');
+    return !!(toggle && visible(toggle));
+  }
+  function mirrorText(node) {
+    const wrap = node.closest && node.closest(".bootstrap-select");
+    if (!wrap) return "";
+    const span = wrap.querySelector(".filter-option");
+    if (span) return String(span.textContent).trim();
+    const toggle = wrap.querySelector("button.dropdown-toggle");
+    return toggle ? String(toggle.getAttribute("title") || "").trim() : "";
+  }
+  function verifyWritten(node, want) {
+    const w = normalizeRegion(want);
+    if (!w) return false;
+    if (node.tagName === "SELECT") {
+      const text2 = node.selectedIndex >= 0 ? String(node.options[node.selectedIndex].textContent) : "";
+      if (text2 && normalizeRegion(text2).indexOf(w) >= 0) return true;
+      const mirror = normalizeRegion(mirrorText(node));
+      return !!mirror && mirror.indexOf(w) >= 0;
+    }
+    if (node.tagName === "INPUT" || node.tagName === "TEXTAREA") {
+      const value = normalizeRegion(node.value);
+      return !!value && value.indexOf(w) >= 0;
+    }
+    const text = normalizeRegion(node.textContent);
+    return !!text && text.indexOf(w) >= 0;
+  }
+  async function writeNative(node, want) {
+    if (node.tagName !== "SELECT") {
+      setVal(node, want);
+      return verifyWritten(node, want);
+    }
+    const idx = bestOptionIndex(node, want, false);
+    if (idx < 0) return false;
+    setVal(node, node.options[idx].value);
+    return verifyWritten(node, want);
+  }
+  async function driveControl(node, want) {
+    const attempts = [];
+    if (node.tagName === "SELECT") {
+      if (isSearchSelect(node)) attempts.push(() => fillSearchSelect(node, want));
+      attempts.push(() => writeNative(node, want));
+    } else if (node.readOnly) {
+      attempts.push(() => fillFloatingPicker(node, want));
+      attempts.push(() => writeNative(node, want));
+    } else {
+      attempts.push(() => writeNative(node, want));
+    }
+    for (let i = 0; i < attempts.length; i += 1) {
+      let ok = false;
+      try {
+        ok = await attempts[i]();
+      } catch (e) {
+        ok = false;
+      }
+      if (ok && verifyWritten(node, want)) return true;
+    }
+    return false;
+  }
+  function optionsReady(node) {
+    if (!node || node.tagName !== "SELECT") return true;
+    if (node.options && node.options.length > 1) return true;
+    return isSearchSelect(node);
+  }
+  async function fillCascade(group, values, options) {
+    const opts = options || {};
+    const levelTimeout = opts.timeout == null ? 6e3 : opts.timeout;
+    const result = { written: 0, blocked: [], missing: [] };
+    for (let i = 0; i < group.nodes.length; i += 1) {
+      const node = group.nodes[i];
+      const role = group.roles[i];
+      if (!role) continue;
+      const want = valueForRole(values, role);
+      if (!want) continue;
+      if (node.tagName === "SELECT") {
+        await waitFor(() => optionsReady(node), { timeout: levelTimeout, root: node.parentElement || node });
+      }
+      if (await driveControl(node, want)) result.written += 1;
+      else result.blocked.push(role);
+    }
+    ADDRESS_ROLES.forEach((role) => {
+      if (group.roles.indexOf(role) >= 0) return;
+      if (valueForRole(values, role)) result.missing.push(role);
+    });
+    return result;
+  }
+  async function fillCascadePanel(el2, values, options) {
+    const opts = options || {};
+    const result = { written: 0, blocked: [], missing: [] };
+    const opened = await openPanel(el2);
+    if (!opened) return result;
+    const cols = panelColumns(opened.panel);
+    for (let i = 0; i < ADDRESS_ROLES.length; i += 1) {
+      const role = ADDRESS_ROLES[i];
+      const want = valueForRole(values, role);
+      if (!want) continue;
+      const scope = cols ? cols[i] : opened.panel;
+      if (!scope) {
+        result.missing = ADDRESS_ROLES.slice(i).filter((r) => valueForRole(values, r));
+        break;
+      }
+      const itemsIn = () => cols ? sameStructureChildren(scope) : candidateItems(scope);
+      const hit = await waitFor(() => pickItem(itemsIn(), want), { timeout: opts.timeout || 2500 });
+      if (!hit) {
+        result.blocked.push(role);
+        result.missing = ADDRESS_ROLES.slice(i + 1).filter((r) => valueForRole(values, r));
+        break;
+      }
+      clickNode2(hit);
+      result.written += 1;
+    }
+    return result;
   }
 
   // src/core/date-widget.js
@@ -2030,12 +2398,12 @@
     } catch (e) {
     }
   }
+  function roleText(list) {
+    return list.map((role) => ROLE_NAMES[role] || role).join(" / ");
+  }
   function addressValueFor(el2, value) {
-    const addr = splitAddress(value);
-    const role = addressRole(el2);
-    if (role === "city") return addr.city || addr.province;
-    if (role === "district") return addr.district || addr.city || addr.province;
-    return addr.province || String(value || "").trim();
+    const values = cascadeValues(value);
+    return valueForRole(values, addressRole(el2) || "province") || values.raw;
   }
   function isCountrySelect(el2) {
     const text = Array.from(el2.options).map((o) => o.textContent).join(" ");
@@ -2108,6 +2476,16 @@
       }
       return;
     }
+    if (el2.tagName !== "INPUT" && el2.tagName !== "TEXTAREA" && el2.tagName !== "SELECT") {
+      if (await fillFloatingPicker(el2, value)) {
+        st.count += 1;
+        st.filled.push(name);
+        if (options.highlight) highlight(el2);
+      } else {
+        st.manual.push(name + "：弹出层里没有匹配项，请手动选");
+      }
+      return;
+    }
     if (el2.tagName === "INPUT" && el2.readOnly) {
       if (isDatePicker(el2)) {
         if (await fillDatePicker(el2, value)) {
@@ -2122,6 +2500,16 @@
       if (DATE_KEYS[key]) {
         st.manual.push(name + "：只读的日期控件，请手动选");
         return;
+      }
+      if (ADDRESS_KEYS[key]) {
+        const panelRes = await fillCascadePanel(el2, cascadeValues(value), { timeout: 2500 });
+        if (panelRes.written) {
+          st.count += panelRes.written;
+          st.filled.push(name);
+          if (options.highlight) highlight(el2);
+          if (panelRes.missing.length) st.manual.push(name + "：" + roleText(panelRes.missing) + " 请手动补全");
+          return;
+        }
       }
       if (await fillFloatingPicker(el2, value)) {
         st.count += 1;
@@ -2181,7 +2569,7 @@
   async function runFill(profile, opts) {
     const options = Object.assign({ onlyEmpty: true, autoConsent: false, highlight: true, fillDatePickers: true }, opts || {});
     const st = { filled: [], manual: [], unknown: [], radioDone: {}, count: 0 };
-    const nodes = deepQueryAll("input, textarea, select");
+    const nodes = deepQueryAll('input, textarea, select, [role="combobox"]');
     const handled = /* @__PURE__ */ new Set();
     const segments = /* @__PURE__ */ new Map();
     const skipNode = (el2) => {
@@ -2189,7 +2577,10 @@
       const t = (el2.type || "").toLowerCase();
       if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") return true;
       if (el2.getAttribute("aria-hidden") === "true") return true;
-      if (!visible(el2)) return true;
+      if (!visible(el2)) {
+        if (hasVisibleMirror(el2)) return false;
+        return true;
+      }
       return false;
     };
     const indexCache = /* @__PURE__ */ new Map();
@@ -2224,49 +2615,33 @@
       classifyCache.set(scope, out);
       return out;
     };
-    const addressGroupCache = /* @__PURE__ */ new Map();
-    const addressGroupAt = (el2) => {
-      if (addressGroupCache.has(el2)) return addressGroupCache.get(el2);
-      const result = computeAddressGroup(el2);
-      addressGroupCache.set(el2, result);
-      return result;
+    const cascadeKeyCache = /* @__PURE__ */ new Map();
+    const classifyForCascade = (node) => {
+      if (cascadeKeyCache.has(node)) return cascadeKeyCache.get(node);
+      const k = pickKey({
+        label: labelText(node),
+        attr: attrText(node),
+        block: sectionBlockType(node),
+        hint: "",
+        allowHint: false
+      });
+      cascadeKeyCache.set(node, k);
+      return k;
     };
-    const computeAddressGroup = (el2) => {
-      const scope = sectionContainer(el2) || rowContainer(el2) || document;
-      const list = classifyIn(scope);
-      const idx = list.findIndex((item) => item.node === el2);
-      if (idx < 0) return null;
-      const tag = el2.tagName;
-      let start = idx;
-      let end = idx;
-      while (start > 0 && list[start - 1].node.tagName === tag) start -= 1;
-      while (end < list.length - 1 && list[end + 1].node.tagName === tag) end += 1;
-      const seg = list.slice(start, end + 1);
-      let groupKey = "";
-      for (let i = 0; i < seg.length; i += 1) {
-        if (seg[i].key && ADDRESS_KEYS[seg[i].key]) {
-          groupKey = seg[i].key;
-          break;
-        }
-      }
-      if (!groupKey) return null;
-      const nodes2 = seg.filter((item) => !item.key || item.key === groupKey).map((item) => item.node);
-      if (!nodes2.length || nodes2.length > 3) return null;
-      return { key: groupKey, nodes: nodes2, roles: assignRoles(nodes2) };
-    };
-    const fillAddressGroup = async (group, key) => {
-      const name = FIELD_NAMES[key] || key;
-      const address = splitAddress(valueForField(key, profile, 1));
-      if (!address.province && !address.city) return false;
-      const res = await fillAddressSegment(group, address);
+    const runCascade = async (group) => {
+      const label = FIELD_NAMES[group.key] || group.key;
+      const values = cascadeValues(valueForField(group.key, profile, 1));
+      if (!values.province && !values.city && !values.raw) return false;
+      const res = await fillCascade(group, values, { timeout: 6e3 });
       group.nodes.forEach((n) => handled.add(n));
       if (res.written) {
         st.count += res.written;
-        st.filled.push(name + "（省 / 市 / 区分开填写）");
+        st.filled.push(label + "（分级选择）");
         if (options.highlight) group.nodes.forEach((n) => highlight(n));
       }
-      if (res.blocked) st.manual.push(name + "：省 / 市 / 区控件没有能选中的值，请手动选");
-      return res.written > 0 || res.blocked > 0;
+      if (res.blocked.length) st.manual.push(label + "：" + roleText(res.blocked) + " 没有选中，请手动选");
+      if (res.missing.length) st.manual.push(label + "：这一栏没有 " + roleText(res.missing) + " 控件，请手动补全");
+      return res.written > 0 || res.blocked.length > 0 || res.missing.length > 0;
     };
     const fillSegment = (el2, group, rowKey) => {
       const date = splitDateTime(valueForField(rowKey, profile, rowIndexOf(el2, rowKey)));
@@ -2364,9 +2739,13 @@
         if (segGroup && fillSegment(el2, segGroup, rowKey)) continue;
       }
       let key = pickKey({ label, attr, block, hint: fieldHint(el2), allowHint: !label && !attr });
-      const addrGroup = addressGroupAt(el2);
-      if (addrGroup && (addrGroup.nodes.length > 1 || !key)) {
-        if (await fillAddressGroup(addrGroup, addrGroup.key)) continue;
+      const cascade = detectCascade(el2, classifyForCascade);
+      if (cascade && (cascade.nodes.length > 1 || !key)) {
+        if (await runCascade(cascade)) continue;
+      }
+      if (key && ADDRESS_KEYS[key] && cascadePositionOf(el2) > 0) {
+        st.manual.push((FIELD_NAMES[key] || key) + "：这一级要等上一级选完，请手动选");
+        continue;
       }
       let direct = false;
       if (!key) {

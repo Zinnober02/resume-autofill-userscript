@@ -1,6 +1,6 @@
 {
   "name": "resume-autofill-userscript",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "description": "一键把个人资料填入企业招聘官网申请表的油猴脚本",
   "type": "module",

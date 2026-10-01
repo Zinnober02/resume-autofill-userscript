@@ -10,7 +10,7 @@ const OPEN_ROUNDS = 8;
 const PICK_ROUNDS = 12;
 
 // 点一下：候选项常是 a / li 这类元素，直接调 click() 在部分环境里不派发事件
-function clickNode(node) {
+export function clickNode(node) {
   node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -26,14 +26,15 @@ function snapshotVisible() {
 }
 
 // 一个容器里「同标签同 class 的直接子元素」最多的一组，就是候选条目
-function sameStructureChildren(container) {
+export function sameStructureChildren(container) {
   const groups = new Map();
   const kids = container.children || [];
   for (let i = 0; i < kids.length; i += 1) {
     const child = kids[i];
     if (!visible(child)) continue;
+    // 空着的容器也要算进来：多列面板里还没轮到的那几列就是空的
     const text = norm(child.textContent);
-    if (!text || text.length > 80) continue;
+    if (text.length > 80) continue;
     const key = child.tagName + '|' + String(child.className || '');
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(child);
@@ -44,16 +45,36 @@ function sameStructureChildren(container) {
 }
 
 // 在整棵子树里找条目最多的那一组（候选列表常埋在浮层里面几层）
-function candidateItems(root) {
+export function candidateItems(root) {
   let best = [];
+  let bestScore = -1;
   const nodes = [root];
   const inside = root.querySelectorAll ? root.querySelectorAll('*') : [];
   for (let i = 0; i < inside.length; i += 1) nodes.push(inside[i]);
   for (let i = 0; i < nodes.length; i += 1) {
     const items = sameStructureChildren(nodes[i]);
-    if (items.length > best.length) best = items;
+    const texts = items.map((item) => norm(item.textContent)).filter(Boolean);
+    if (texts.length < MIN_ITEMS) continue;
+    // 一列容器与它里面的条目都是「一组同构元素」，取每条文字更短的那一组
+    let total = 0;
+    for (let k = 0; k < texts.length; k += 1) total += texts[k].length;
+    const score = texts.length * 10 - total / texts.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = items;
+    }
   }
   return best;
+}
+
+// 多列面板：面板的直接子元素里有不止一列，每列里都装着自己的条目
+export function panelColumns(panel) {
+  const cols = sameStructureChildren(panel);
+  if (cols.length < 2) return null;
+  // 后面几列要等前一级选完才有内容，只要有一列装着条目就够了
+  const hasItems = cols.some((col) => sameStructureChildren(col).length > 0);
+  if (!hasItems) return null;
+  return cols;
 }
 
 // 条目内部通常还有一个真正带点击处理的元素（a / button / role=option），
@@ -63,7 +84,7 @@ function clickTargetFor(node) {
   return inner || node;
 }
 
-function pickItem(items, want) {
+export function pickItem(items, want) {
   const w = norm(want);
   const hits = [];
   for (let i = 0; i < items.length; i += 1) {
@@ -94,7 +115,16 @@ function looksLikePanel(node) {
   return sameStructureChildren(node).length >= MIN_ITEMS;
 }
 
-async function openPanel(el) {
+// 容器的整棵子树都是点击之后才出现的
+function whollyFresh(node, before) {
+  const all = node.querySelectorAll ? node.querySelectorAll('*') : [];
+  for (let i = 0; i < all.length; i += 1) {
+    if (before.has(all[i])) return false;
+  }
+  return true;
+}
+
+export async function openPanel(el) {
   const before = snapshotVisible();
   clickNode(el);
   for (let round = 0; round < OPEN_ROUNDS; round += 1) {
@@ -106,17 +136,21 @@ async function openPanel(el) {
       if (isOurUI(node) || before.has(node) || !visible(node)) continue;
       fresh.push(node);
     }
+    // 浮层是「整棵子树都是新的」的那种容器；页面里原本就有的元素还混在里面的不算
     const hits = [];
     for (let i = 0; i < fresh.length; i += 1) {
-      if (looksLikePanel(fresh[i])) hits.push(fresh[i]);
+      const node = fresh[i];
+      if (!looksLikePanel(node)) continue;
+      if (!whollyFresh(node, before)) continue;
+      hits.push(node);
     }
     if (!hits.length) continue;
-    // 取最内层的那一个：外面几层往往是「整块页面变可见」的祖先
-    for (let i = hits.length - 1; i >= 0; i -= 1) {
+    // 取最外层：多列面板的每一列也是新的，但它们都装在面板里
+    for (let i = 0; i < hits.length; i += 1) {
       const node = hits[i];
-      if (!hits.some((other) => other !== node && node.contains(other))) return { panel: node };
+      if (!hits.some((other) => other !== node && other.contains(node))) return { panel: node };
     }
-    return { panel: hits[hits.length - 1] };
+    return { panel: hits[0] };
   }
   return null;
 }
@@ -133,12 +167,18 @@ function searchBoxIn(panel) {
   return null;
 }
 
+// 展示框可能是 input，也可能是 div 做的（role=combobox 那种），两种都认
+function shownText(el) {
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return String(el.value || '');
+  return String(el.textContent || '');
+}
+
 async function waitPicked(el, want) {
   const w = norm(want);
   for (let i = 0; i < 10; i += 1) {
     await sleep(120);
-    const value = String(el.value || '').trim();
-    if (value && norm(value).indexOf(w) >= 0) return true;
+    const value = norm(shownText(el));
+    if (value && value.indexOf(w) >= 0) return true;
   }
   return false;
 }
