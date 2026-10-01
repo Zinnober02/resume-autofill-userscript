@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.9.0
+// @version      1.9.1
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -961,106 +961,6 @@
     }
   }
 
-  // src/core/address.js
-  var PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
-  var CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;
-  var AREA_RE = /^(.{1,12}?(?:自治县|自治旗|区|县|旗|市))/;
-  function splitAddress(value) {
-    let rest = String(value == null ? "" : value).trim();
-    const out = { province: "", city: "", district: "", detail: "" };
-    const m1 = rest.match(PROVINCE_RE);
-    if (m1) {
-      out.province = m1[1];
-      rest = rest.slice(out.province.length).trim();
-    }
-    const m2 = rest.match(CITY_RE);
-    if (m2) {
-      out.city = m2[1];
-      rest = rest.slice(out.city.length).trim();
-    }
-    const m3 = rest.match(AREA_RE);
-    if (m3) {
-      out.district = m3[1];
-      rest = rest.slice(out.district.length).trim();
-    }
-    out.detail = rest;
-    return out;
-  }
-  function addressRole(el2) {
-    const label = norm(labelText(el2));
-    const attr = norm(String(el2.getAttribute("name") || "") + String(el2.getAttribute("id") || "") + String(el2.getAttribute("placeholder") || ""));
-    if (/province|sheng/.test(attr)) return "province";
-    if (/city|shi/.test(attr)) return "city";
-    if (/district|area|county|qu|area/.test(attr)) return "district";
-    if (/^省$|省份|所在省|请选择省/.test(label)) return "province";
-    if (/^市$|所在市|请选择市/.test(label)) return "city";
-    if (/^区$|^县$|区县|所在区|请选择区|请选择县/.test(label)) return "district";
-    return "";
-  }
-  function usable(node) {
-    if (!node || !node.tagName) return false;
-    if (node.disabled || node.readOnly) return false;
-    if ((node.type || "").toLowerCase() === "hidden") return false;
-    return !isOurUI(node);
-  }
-  function addressSegmentGroup(el2) {
-    const row = rowContainer(el2);
-    if (!row || !row.querySelectorAll) return null;
-    const nodes = [];
-    const inside = row.querySelectorAll("input, select");
-    for (let i = 0; i < inside.length; i += 1) {
-      if (usable(inside[i])) nodes.push(inside[i]);
-    }
-    if (nodes.length < 2 || nodes.length > 3) return null;
-    const roles = nodes.map((node) => addressRole(node));
-    const taken = {};
-    for (let i = 0; i < roles.length; i += 1) {
-      if (roles[i] && !taken[roles[i]]) taken[roles[i]] = 1;
-      else roles[i] = "";
-    }
-    const fallback = nodes.length === 3 ? ["province", "city", "district"] : ["province", "city"];
-    for (let i = 0; i < roles.length; i += 1) {
-      if (roles[i]) continue;
-      const pick = fallback.filter((r) => !taken[r])[0];
-      if (!pick) return null;
-      roles[i] = pick;
-      taken[pick] = 1;
-    }
-    if (!taken.province || !taken.city) return null;
-    return { row, nodes, roles };
-  }
-  async function bestOptionWithWait(select, want, tries) {
-    const rounds = tries || 4;
-    for (let i = 0; i < rounds; i += 1) {
-      const idx = bestOptionIndex(select, want, false);
-      if (idx >= 0) return idx;
-      await sleep(200);
-    }
-    return -1;
-  }
-  async function fillAddressSegment(group, address) {
-    let written = 0;
-    let blocked = 0;
-    for (let i = 0; i < group.nodes.length; i += 1) {
-      const node = group.nodes[i];
-      const want = address[group.roles[i]];
-      if (!want) continue;
-      if (node.tagName === "SELECT") {
-        const idx = await bestOptionWithWait(node, want);
-        if (idx < 0) {
-          blocked += 1;
-          continue;
-        }
-        setVal(node, node.options[idx].value);
-      } else {
-        setVal(node, want);
-      }
-      written += 1;
-      await sleep(150);
-    }
-    return { written, blocked };
-  }
-
   // src/core/search-select.js
   var OPTION_SELECTOR = '[role="option"], .dropdown-menu li a, .dropdown-menu li, .ant-select-item-option, .el-select-dropdown__item, .bs-searchbox ~ .dropdown-menu li a';
   function isSearchSelect(el2) {
@@ -1144,6 +1044,89 @@
     if (box) setVal(box, "");
     if (toggle) clickNode(toggle);
     return false;
+  }
+
+  // src/core/address.js
+  var PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
+  var CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;
+  var AREA_RE = /^(.{1,12}?(?:自治县|自治旗|区|县|旗|市))/;
+  function splitAddress(value) {
+    let rest = String(value == null ? "" : value).trim();
+    const out = { province: "", city: "", district: "", detail: "" };
+    const m1 = rest.match(PROVINCE_RE);
+    if (m1) {
+      out.province = m1[1];
+      rest = rest.slice(out.province.length).trim();
+    }
+    const m2 = rest.match(CITY_RE);
+    if (m2) {
+      out.city = m2[1];
+      rest = rest.slice(out.city.length).trim();
+    }
+    const m3 = rest.match(AREA_RE);
+    if (m3) {
+      out.district = m3[1];
+      rest = rest.slice(out.district.length).trim();
+    }
+    out.detail = rest;
+    return out;
+  }
+  function addressRole(el2) {
+    const label = norm(labelText(el2));
+    const attr = norm(String(el2.getAttribute("name") || "") + String(el2.getAttribute("id") || "") + String(el2.getAttribute("placeholder") || ""));
+    if (/province|sheng/.test(attr)) return "province";
+    if (/city|shi/.test(attr)) return "city";
+    if (/district|area|county|qu|area/.test(attr)) return "district";
+    if (/^省$|省份|所在省|请选择省/.test(label)) return "province";
+    if (/^市$|所在市|请选择市/.test(label)) return "city";
+    if (/^区$|^县$|区县|所在区|请选择区|请选择县/.test(label)) return "district";
+    return "";
+  }
+  var ADDRESS_ROLES = ["province", "city", "district"];
+  function assignRoles(nodes) {
+    const roles = nodes.map((node) => addressRole(node));
+    const taken = {};
+    roles.forEach((role) => {
+      if (role) taken[role] = 1;
+    });
+    const free = ADDRESS_ROLES.filter((role) => !taken[role]);
+    for (let i = 0; i < roles.length; i += 1) {
+      if (!roles[i]) roles[i] = free.shift() || "";
+    }
+    return roles;
+  }
+  async function bestOptionWithWait(select, want, tries) {
+    const rounds = tries || 4;
+    for (let i = 0; i < rounds; i += 1) {
+      const idx = bestOptionIndex(select, want, false);
+      if (idx >= 0) return idx;
+      await sleep(200);
+    }
+    return -1;
+  }
+  async function fillAddressSegment(group, address) {
+    let written = 0;
+    let blocked = 0;
+    for (let i = 0; i < group.nodes.length; i += 1) {
+      const node = group.nodes[i];
+      const want = address[group.roles[i]];
+      if (!want) continue;
+      if (node.tagName === "SELECT") {
+        const idx = await bestOptionWithWait(node, want);
+        if (idx >= 0) {
+          setVal(node, node.options[idx].value);
+        } else if (isSearchSelect(node) && await fillSearchSelect(node, want)) {
+        } else {
+          blocked += 1;
+          continue;
+        }
+      } else {
+        setVal(node, want);
+      }
+      written += 1;
+      await sleep(150);
+    }
+    return { written, blocked };
   }
 
   // src/core/floating-picker.js
@@ -1442,7 +1425,7 @@
     if (/[日号]$/.test(label)) return "day";
     return "";
   }
-  function usable2(node) {
+  function usable(node) {
     if (!node || !node.tagName) return false;
     if (node.disabled || node.readOnly) return false;
     if ((node.type || "").toLowerCase() === "hidden") return false;
@@ -1454,7 +1437,7 @@
     const nodes = [];
     const inside = row.querySelectorAll("input, select");
     for (let i = 0; i < inside.length; i += 1) {
-      if (usable2(inside[i])) nodes.push(inside[i]);
+      if (usable(inside[i])) nodes.push(inside[i]);
     }
     if (nodes.length < 2 || nodes.length > 3) return null;
     const fallback = nodes.length === 3 ? ["year", "month", "day"] : ["year", "month"];
@@ -1764,12 +1747,47 @@
       if (!segments.has(row)) segments.set(row, dateSegmentGroup(el2));
       return segments.get(row);
     };
-    const addressGroups = /* @__PURE__ */ new Map();
-    const addressGroupOf = (el2) => {
-      const row = rowContainer(el2);
-      if (!row) return null;
-      if (!addressGroups.has(row)) addressGroups.set(row, addressSegmentGroup(el2));
-      return addressGroups.get(row);
+    const classifyCache = /* @__PURE__ */ new Map();
+    const classifyIn = (scope) => {
+      if (classifyCache.has(scope)) return classifyCache.get(scope);
+      const out = [];
+      const list = scope.querySelectorAll("input, select");
+      for (let i = 0; i < list.length; i += 1) {
+        const node = list[i];
+        if (isOurUI(node) || node.disabled) continue;
+        const t = (node.type || "").toLowerCase();
+        if (t === "hidden" || t === "submit" || t === "button" || t === "reset" || t === "image") continue;
+        if (t === "file" || t === "checkbox" || t === "radio") continue;
+        out.push({
+          node,
+          key: pickKey({ label: labelText(node), attr: attrText(node), block: sectionBlockType(node), hint: "", allowHint: false })
+        });
+      }
+      classifyCache.set(scope, out);
+      return out;
+    };
+    const addressGroupAt = (el2) => {
+      const scope = sectionContainer(el2) || rowContainer(el2) || document;
+      const list = classifyIn(scope);
+      const idx = list.findIndex((item) => item.node === el2);
+      if (idx < 0) return null;
+      const tag = el2.tagName;
+      let start = idx;
+      let end = idx;
+      while (start > 0 && list[start - 1].node.tagName === tag) start -= 1;
+      while (end < list.length - 1 && list[end + 1].node.tagName === tag) end += 1;
+      const seg = list.slice(start, end + 1);
+      let groupKey = "";
+      for (let i = 0; i < seg.length; i += 1) {
+        if (seg[i].key && ADDRESS_KEYS[seg[i].key]) {
+          groupKey = seg[i].key;
+          break;
+        }
+      }
+      if (!groupKey) return null;
+      const nodes2 = seg.filter((item) => !item.key || item.key === groupKey).map((item) => item.node);
+      if (!nodes2.length || nodes2.length > 3) return null;
+      return { key: groupKey, nodes: nodes2, roles: assignRoles(nodes2) };
     };
     const fillAddressGroup = async (group, key) => {
       const name = FIELD_NAMES[key] || key;
@@ -1880,11 +1898,11 @@
         const segGroup = segmentOf(el2);
         if (segGroup && fillSegment(el2, segGroup, rowKey)) continue;
       }
-      if (rowKey && ADDRESS_KEYS[rowKey]) {
-        const addrGroup = addressGroupOf(el2);
-        if (addrGroup && await fillAddressGroup(addrGroup, rowKey)) continue;
-      }
       let key = pickKey({ label, attr, block, hint: fieldHint(el2), allowHint: !label && !attr });
+      const addrGroup = addressGroupAt(el2);
+      if (addrGroup && (addrGroup.nodes.length > 1 || !key)) {
+        if (await fillAddressGroup(addrGroup, addrGroup.key)) continue;
+      }
       let direct = false;
       if (!key) {
         const ex = matchExtra(profile, label, attr, rowText);

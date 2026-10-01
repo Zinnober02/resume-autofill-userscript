@@ -9,7 +9,7 @@ import {
   groupOf, DATE_KEYS, ADDRESS_KEYS, valueForField, matchExtra, formatValue,
   splitDateTime, FIELD_NAMES,
 } from './value.js';
-import { splitAddress, addressRole, addressSegmentGroup, fillAddressSegment } from './address.js';
+import { splitAddress, addressRole, assignRoles, fillAddressSegment } from './address.js';
 import { isSearchSelect, fillSearchSelect } from './search-select.js';
 import { fillFloatingPicker } from './floating-picker.js';
 import { isDatePicker, fillDatePicker, dateSegmentGroup, writeDateSegment } from './date-widget.js';
@@ -250,12 +250,48 @@ export async function runFill(profile, opts) {
     return segments.get(row);
   };
 
-  const addressGroups = new Map();
-  const addressGroupOf = (el) => {
-    const row = rowContainer(el);
-    if (!row) return null;
-    if (!addressGroups.has(row)) addressGroups.set(row, addressSegmentGroup(el));
-    return addressGroups.get(row);
+  // 一栏里连续的同类控件看成一组：地址字段常是一串下拉，
+  // 其中第一级往往没有字段名（电信那个 firstLevl 就是），只能靠同组的兄弟认出来
+  const classifyCache = new Map();
+  const classifyIn = (scope) => {
+    if (classifyCache.has(scope)) return classifyCache.get(scope);
+    const out = [];
+    const list = scope.querySelectorAll('input, select');
+    for (let i = 0; i < list.length; i += 1) {
+      const node = list[i];
+      if (isOurUI(node) || node.disabled) continue;
+      const t = (node.type || '').toLowerCase();
+      if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'reset' || t === 'image') continue;
+      if (t === 'file' || t === 'checkbox' || t === 'radio') continue;
+      out.push({
+        node,
+        key: pickKey({ label: labelText(node), attr: attrText(node), block: sectionBlockType(node), hint: '', allowHint: false }),
+      });
+    }
+    classifyCache.set(scope, out);
+    return out;
+  };
+
+  const addressGroupAt = (el) => {
+    const scope = sectionContainer(el) || rowContainer(el) || document;
+    const list = classifyIn(scope);
+    const idx = list.findIndex((item) => item.node === el);
+    if (idx < 0) return null;
+    const tag = el.tagName;
+    let start = idx;
+    let end = idx;
+    while (start > 0 && list[start - 1].node.tagName === tag) start -= 1;
+    while (end < list.length - 1 && list[end + 1].node.tagName === tag) end += 1;
+    const seg = list.slice(start, end + 1);
+    let groupKey = '';
+    for (let i = 0; i < seg.length; i += 1) {
+      if (seg[i].key && ADDRESS_KEYS[seg[i].key]) { groupKey = seg[i].key; break; }
+    }
+    if (!groupKey) return null;
+    // 组里只留「没有字段名的」和「就是这一个地址字段的」，别把旁边的学历、性别也拉进来
+    const nodes = seg.filter((item) => !item.key || item.key === groupKey).map((item) => item.node);
+    if (!nodes.length || nodes.length > 3) return null;
+    return { key: groupKey, nodes, roles: assignRoles(nodes) };
   };
 
   // 省 / 市 / 区分开的下拉或输入框：整组一起填，选完一级等下一级的选项出来
@@ -376,12 +412,15 @@ export async function runFill(profile, opts) {
       const segGroup = segmentOf(el);
       if (segGroup && fillSegment(el, segGroup, rowKey)) continue;
     }
-    if (rowKey && ADDRESS_KEYS[rowKey]) {
-      const addrGroup = addressGroupOf(el);
-      if (addrGroup && await fillAddressGroup(addrGroup, rowKey)) continue;
+    let key = pickKey({ label, attr, block, hint: fieldHint(el), allowHint: !label && !attr });
+
+    // 地址字段先当成一组处理：第一级那个下拉往往没有字段名，单独看是认不出来的。
+    // 组里只有一个控件、而且它自己有字段名时，交回下面按普通字段处理
+    const addrGroup = addressGroupAt(el);
+    if (addrGroup && (addrGroup.nodes.length > 1 || !key)) {
+      if (await fillAddressGroup(addrGroup, addrGroup.key)) continue;
     }
 
-    let key = pickKey({ label, attr, block, hint: fieldHint(el), allowHint: !label && !attr });
     let direct = false;
     if (!key) {
       const ex = matchExtra(profile, label, attr, rowText);

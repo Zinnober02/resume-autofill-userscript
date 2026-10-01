@@ -156,6 +156,22 @@ test('省、市、区各自的框只拿自己那一段', async () => {
   assert.deepEqual(Array.from(report.manual), []);
 });
 
+test('同栏两个下拉、第一级没有字段名时，第一个填省第二个填市', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="row">',
+    '<select name="a1"><option value="">请选择</option><option>浙江省</option><option>江苏省</option></select>',
+    '<select name="a2" msg="籍贯"><option value="">请选择</option><option>杭州市</option><option>南京市</option></select>',
+    '</div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { hometown: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="a1"]').value, '浙江省');
+  assert.equal(field(dom, 'select[name="a2"]').value, '杭州市');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
 test('下拉里确实没有能对上的选项时记进需要手动处理', async () => {
   const html = [
     '<!doctype html><html><body><form>',

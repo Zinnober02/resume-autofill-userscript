@@ -3,6 +3,7 @@
 import { norm } from './rules.js';
 import { sleep, labelText, attrText, rowContainer, isOurUI } from './dom.js';
 import { setVal, bestOptionIndex } from './form-control.js';
+import { isSearchSelect, fillSearchSelect } from './search-select.js';
 
 const PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
 const CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;
@@ -42,6 +43,21 @@ export function addressRole(el) {
   if (/^市$|所在市|请选择市/.test(label)) return 'city';
   if (/^区$|^县$|区县|所在区|请选择区|请选择县/.test(label)) return 'district';
   return '';
+}
+
+const ADDRESS_ROLES = ['province', 'city', 'district'];
+
+// 一组地址控件里谁管哪一级：自己能看出角色的按自己的，
+// 看不出来的按先后顺序补（第一级是省，第二级是市，第三级是区县）
+export function assignRoles(nodes) {
+  const roles = nodes.map((node) => addressRole(node));
+  const taken = {};
+  roles.forEach((role) => { if (role) taken[role] = 1; });
+  const free = ADDRESS_ROLES.filter((role) => !taken[role]);
+  for (let i = 0; i < roles.length; i += 1) {
+    if (!roles[i]) roles[i] = free.shift() || '';
+  }
+  return roles;
 }
 
 function usable(node) {
@@ -99,8 +115,14 @@ export async function fillAddressSegment(group, address) {
     if (!want) continue;
     if (node.tagName === 'SELECT') {
       const idx = await bestOptionWithWait(node, want);
-      if (idx < 0) { blocked += 1; continue; }
-      setVal(node, node.options[idx].value);
+      if (idx >= 0) {
+        setVal(node, node.options[idx].value);
+      } else if (isSearchSelect(node) && await fillSearchSelect(node, want)) {
+        // 候选要拿关键词去后端换的下拉
+      } else {
+        blocked += 1;
+        continue;
+      }
     } else {
       setVal(node, want);
     }
