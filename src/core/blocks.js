@@ -31,6 +31,23 @@ export function signatureOf(node, type) {
   return fieldsOf(node, type).map((n) => fieldKeyOf(n, type)).sort().join(',');
 }
 
+// 每块只有一个字段时：先看整段的字段序列有没有原样重复一次，再看同一个字段第二次出现的位置
+function repeatedBySequence(blocks, sigs) {
+  const flat = sigs.map((s) => s[0]);
+  const half = Math.floor(flat.length / 2);
+  for (let len = 1; len <= half; len += 1) {
+    let same = true;
+    for (let i = 0; i < len; i += 1) {
+      if (flat[i] !== flat[i + len]) { same = false; break; }
+    }
+    if (!same) continue;
+    const out = [];
+    for (let i = 0; i < flat.length; i += len) out.push(blocks[i]);
+    return out;
+  }
+  return null;
+}
+
 // 往上逐层看：某一层的兄弟块里出现了两组字段组合相同的块，这一层就是「一段」
 function repeatedLevel(el, type) {
   let node = el;
@@ -47,6 +64,11 @@ function repeatedLevel(el, type) {
     if (blocks.length > 1) {
       // 两个块里出现同一个字段，说明它们是重复的两段；只是字段各不相同的，是同一段分成几行
       const sigs = blocks.map((b) => fieldsOf(b, type).map((n) => fieldKeyOf(n, type)));
+      // 一个字段占一个块的表格：把各块的字段排成一列，找最短的重复周期
+      if (sigs.every((s) => s.length === 1)) {
+        const bySeq = repeatedBySequence(blocks, sigs);
+        if (bySeq) return { node, blocks: bySeq };
+      }
       for (let i = 0; i < sigs.length; i += 1) {
         // 一段经历里字段通常不止一个。只凭「有一个字段相同」就把每行当成一段，
         // 会把同一段经历拆成好几段（移动那个页面每个字段各占一个 dl 就是这样）

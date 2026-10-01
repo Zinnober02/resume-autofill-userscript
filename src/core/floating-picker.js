@@ -25,6 +25,15 @@ function snapshotVisible() {
   return seen;
 }
 
+// 选中的那一条常常多带一个 active 之类的状态类，分组时不能算进结构
+const STATE_CLASS_RE = /^(active|selected|current|hover|focus|on|open|checked|disabled|hide|show|cur)$/;
+
+function classKeyOf(node) {
+  const list = String(node.className || '').split(/\s+/).filter(Boolean).filter((c) => !STATE_CLASS_RE.test(c));
+  list.sort();
+  return node.tagName + '|' + list.join('.');
+}
+
 // 一个容器里「同标签同 class 的直接子元素」最多的一组，就是候选条目
 export function sameStructureChildren(container) {
   const groups = new Map();
@@ -35,7 +44,7 @@ export function sameStructureChildren(container) {
     // 空着的容器也要算进来：多列面板里还没轮到的那几列就是空的
     const text = norm(child.textContent);
     if (text.length > 80) continue;
-    const key = child.tagName + '|' + String(child.className || '');
+    const key = classKeyOf(child);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(child);
   }
@@ -54,7 +63,8 @@ export function candidateItems(root) {
   for (let i = 0; i < nodes.length; i += 1) {
     const items = sameStructureChildren(nodes[i]);
     const texts = items.map((item) => norm(item.textContent)).filter(Boolean);
-    if (texts.length < MIN_ITEMS) continue;
+    // 候选可能只有一两条，这里不设下限；浮层本身的识别由 looksLikePanel 负责
+    if (!texts.length) continue;
     // 一列容器与它里面的条目都是「一组同构元素」，取每条文字更短的那一组
     let total = 0;
     for (let k = 0; k < texts.length; k += 1) total += texts[k].length;

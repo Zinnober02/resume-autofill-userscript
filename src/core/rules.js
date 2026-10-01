@@ -65,7 +65,7 @@ export const RULES = [
   { key: 'familyInCompany', re: /是否在.{0,8}(工作|任职)|在本单位工作|是否在.{0,8}集团/, ctx: ['family'] },
   { key: 'familyNote', re: /备注|说明/, ctx: ['family'] },
   { key: 'familyRelation', re: /^关系$|与本人关系|亲属关系|家庭成员关系|家庭关系/, ctx: ['family'] },
-  { key: 'familyName', re: /家庭成员姓名|家属姓名|亲属姓名|^姓名$/, ctx: ['family'] },
+  { key: 'familyName', re: /家庭成员姓名|家属姓名|亲属姓名|成员姓名|监护人姓名|紧急联系人姓名/, ctx: ['family'] },
 
   { key: 'certLevel', re: /证书等级|证书级别|资格等级/, ctx: ['cert'] },
   { key: 'certDate', re: /证书.{0,4}(时间|日期)|获得时间|取得时间/, ctx: ['cert'] },

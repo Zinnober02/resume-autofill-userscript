@@ -11,7 +11,7 @@ import {
 } from './value.js';
 import { cascadeValues, valueForRole, addressRole, ROLE_NAMES } from './address.js';
 import {
-  detectCascade, cascadePositionOf, hasVisibleMirror, fillCascade, fillCascadePanel,
+  detectCascade, hasVisibleMirror, fillCascade, fillCascadePanel,
 } from './cascade.js';
 import { isSearchSelect, fillSearchSelect } from './search-select.js';
 import { fillFloatingPicker } from './floating-picker.js';
@@ -287,6 +287,24 @@ export async function runFill(profile, opts) {
     return indexCache.get(el);
   };
 
+  // 同一个栏容器编号，用来判断「同名字段在这一栏里是不是第二次出现」
+  const scopeIds = new WeakMap();
+  let scopeSeq = 0;
+  const scopeIdOf = (node) => {
+    if (!scopeIds.has(node)) { scopeSeq += 1; scopeIds.set(node, scopeSeq); }
+    return scopeIds.get(node);
+  };
+  const claimed = new Set();
+  const isRepeatInSection = (el, key) => {
+    if (!groupOf(key)) return false;
+    const scope = sectionContainer(el) || rowContainer(el);
+    if (!scope) return false;
+    const stamp = scopeIdOf(scope) + '|' + key + '|' + rowIndexOf(el, key);
+    if (claimed.has(stamp)) return true;
+    claimed.add(stamp);
+    return false;
+  };
+
   const segmentOf = (el) => {
     const row = rowContainer(el);
     if (!row) return null;
@@ -458,12 +476,6 @@ export async function runFill(profile, opts) {
     if (cascade && (cascade.nodes.length > 1 || !key)) {
       if (await runCascade(cascade)) continue;
     }
-    // 组识别不出来时，第二级及以后的控件不拿第一级的值去试
-    if (key && ADDRESS_KEYS[key] && cascadePositionOf(el) > 0) {
-      st.manual.push((FIELD_NAMES[key] || key) + '：这一级要等上一级选完，请手动选');
-      continue;
-    }
-
     let direct = false;
     if (!key) {
       const ex = matchExtra(profile, label, attr, rowText);
@@ -480,6 +492,9 @@ export async function runFill(profile, opts) {
 
     const value = direct ? key.slice(6) : valueForField(key, profile, rowIndexOf(el, key));
     if (!value) continue;
+    // 一栏里同一个字段出现第二次（例如「双学位」那组又有一个专业名称），
+    // 而这一栏又认不出经历分段时，只填第一次出现的那个，避免把第一段的值抄进第二组
+    if (isRepeatInSection(el, key)) continue;
 
     const pair = pairedStart(el, key);
     if (pair && !alreadyFilled(pair.node)) {

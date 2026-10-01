@@ -234,10 +234,12 @@ const TELECOM_ROW = [
   '<div class="mdf-table-cell"><div class="ipt-item9"><div class="ipt-item-half">',
   '<div class="btn-group bootstrap-select show-tick form-control">',
   '<select id="firstLevl11_245_1" name="firstLevl11_245_1" data-live-search="true" class="selectpicker show-tick form-control">' + PLACEHOLDER + '</select>',
+  '<div class="dropdown-menu open"><div class="bs-searchbox"><input type="text" class="form-control"></div><ul class="dropdown-menu inner"></ul></div>',
   '<button type="button" class="btn dropdown-toggle bs-placeholder" data-toggle="dropdown"><span class="filter-option pull-left">请选择</span></button>',
   '</div>',
   '<div class="btn-group bootstrap-select show-tick form-control">',
   '<select id="11_245_1" name="11_245_1" msg="籍贯" data-live-search="true" class="selectpicker show-tick form-control">' + PLACEHOLDER + '</select>',
+  '<div class="dropdown-menu open"><div class="bs-searchbox"><input type="text" class="form-control"></div><ul class="dropdown-menu inner"></ul></div>',
   '<button type="button" class="btn dropdown-toggle bs-placeholder" data-toggle="dropdown"><span class="filter-option pull-left">请选择</span></button>',
   '</div>',
   '</div></div></div></form></body></html>',
@@ -259,4 +261,53 @@ test('电信那栏的标记能被认成一组，第一级没有字段名也算',
   assert.equal(group.nodes.length, 2);
   assert.deepEqual(group.roles, ['province', 'city'], '前一个是省，后一个是市');
   assert.equal(detectCascade(first, classify).position, 0);
+});
+test('单级地址字段前面还有别的下拉时，它照常填', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="row"><span>政治面貌</span>',
+    '<select name="politics">' + PLACEHOLDER + opt('中共党员') + opt('群众') + '</select>',
+    '</div>',
+    '<div class="row"><span>籍贯</span>',
+    '<select name="native">' + PLACEHOLDER + opt('浙江省') + opt('江苏省') + '</select>',
+    '</div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  const report = await runFill(window, { politicalStatus: '中共党员', hometown: '浙江省', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="politics"]').value, '中共党员');
+  assert.equal(field(dom, 'select[name="native"]').value, '浙江省');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
+test('四级地址（省 / 市 / 区 / 街道）前三级照常填', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="row"><span>户口所在地</span>',
+    '<select name="p">' + PLACEHOLDER + opt('浙江省') + opt('江苏省') + '</select>',
+    '<select name="c">' + PLACEHOLDER + opt('杭州市') + opt('南京市') + '</select>',
+    '<select name="d">' + PLACEHOLDER + opt('西湖区') + opt('玄武区') + '</select>',
+    '<select name="s">' + PLACEHOLDER + opt('西湖街道') + opt('梅园街道') + '</select>',
+    '</div></form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  await runFill(window, { hukou: '浙江省杭州市西湖区', extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'select[name="p"]').value, '浙江省');
+  assert.equal(field(dom, 'select[name="c"]').value, '杭州市');
+  assert.equal(field(dom, 'select[name="d"]').value, '西湖区');
+});
+
+test('一栏里同名字段出现两次时，第二次不写第一段的值', async () => {
+  const html = [
+    '<!doctype html><html><body><form>',
+    '<div class="lf660">',
+    '<dl><dt>专业名称</dt><dd><input id="major1" type="text" value="请输入专业名称"></dd></dl>',
+    '<dl><dt>专业名称（双学位）</dt><dd><input id="major2" type="text" value="请输入专业名称"></dd></dl>',
+    '</div>',
+    '</form></body></html>',
+  ].join('');
+  const { dom, window } = await createPage(html);
+  await runFill(window, { educations: [{ major: '软件工程' }], extra: [] }, OPTIONS);
+  assert.equal(field(dom, '#major1').value, '软件工程');
+  assert.equal(field(dom, '#major2').value, '请输入专业名称', '第二个不应该被写入第一段的值');
 });

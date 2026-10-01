@@ -78,3 +78,29 @@ test('sectionType 区分教育区块与工作区块', () => {
   assert.equal(sectionType('工作经历'), 'work');
   assert.equal(sectionType('基本信息'), '');
 });
+test('专业相关的字段各自成项，不互相抢', () => {
+  assert.equal(key('专业名称'), 'major');
+  assert.equal(key('所学专业'), 'major');
+  assert.equal(key('专业课程'), 'majorCourses');
+  assert.equal(key('主修课程'), 'majorCourses');
+  assert.equal(key('专业描述'), 'majorDesc');
+  assert.equal(key('研究方向'), 'researchArea');
+});
+
+test('亲属姓名只在带亲属字样的标签上命中，普通姓名仍然是姓名', () => {
+  const withBlock = (label) => pickKey({ label, attr: '', block: 'family', hint: '', allowHint: false });
+  assert.equal(withBlock('姓名'), 'name');
+  assert.equal(withBlock('姓名*'), 'name');
+  assert.equal(withBlock('亲属姓名'), 'familyName');
+  assert.equal(withBlock('家庭成员姓名'), 'familyName');
+});
+
+test('规则表里用到的字段在中文名表里都查得到', async () => {
+  const { RULES } = await import('../src/core/rules.js');
+  const { FIELD_NAMES } = await import('../src/core/value.js');
+  const missing = [];
+  RULES.forEach((rule) => {
+    if (!FIELD_NAMES[rule.key] && missing.indexOf(rule.key) < 0) missing.push(rule.key);
+  });
+  assert.deepEqual(missing, [], '这些字段没有中文名：' + missing.join('、'));
+});

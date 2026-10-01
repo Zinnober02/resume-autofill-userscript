@@ -2,7 +2,7 @@
 // @name         简历自动填充助手
 // @name:en      Resume Autofill Helper
 // @namespace    local.resume.autofill
-// @version      1.11.2
+// @version      1.11.3
 // @description  一键把个人资料填入企业招聘官网 / 在线申请表；支持多套方案、随时修改
 // @description:en  Fill job application forms with your saved profile in one click.
 // @match        *://*/*
@@ -81,7 +81,7 @@
     { key: "familyInCompany", re: /是否在.{0,8}(工作|任职)|在本单位工作|是否在.{0,8}集团/, ctx: ["family"] },
     { key: "familyNote", re: /备注|说明/, ctx: ["family"] },
     { key: "familyRelation", re: /^关系$|与本人关系|亲属关系|家庭成员关系|家庭关系/, ctx: ["family"] },
-    { key: "familyName", re: /家庭成员姓名|家属姓名|亲属姓名|^姓名$/, ctx: ["family"] },
+    { key: "familyName", re: /家庭成员姓名|家属姓名|亲属姓名|成员姓名|监护人姓名|紧急联系人姓名/, ctx: ["family"] },
     { key: "certLevel", re: /证书等级|证书级别|资格等级/, ctx: ["cert"] },
     { key: "certDate", re: /证书.{0,4}(时间|日期)|获得时间|取得时间/, ctx: ["cert"] },
     { key: "certName", re: /证书名称|资格证书|专业资格证书|证书/, ctx: ["cert"] },
@@ -435,6 +435,11 @@
     major: "专业",
     degree: "学历",
     degreeLevel: "学位",
+    researchArea: "研究方向",
+    majorCourses: "主修课程",
+    majorDesc: "专业描述",
+    schooling: "学制",
+    educationType: "培养方式",
     eduStart: "入学时间",
     eduEnd: "毕业时间",
     gpa: "GPA",
@@ -1736,6 +1741,12 @@
     }
     return seen;
   }
+  var STATE_CLASS_RE = /^(active|selected|current|hover|focus|on|open|checked|disabled|hide|show|cur)$/;
+  function classKeyOf(node) {
+    const list = String(node.className || "").split(/\s+/).filter(Boolean).filter((c) => !STATE_CLASS_RE.test(c));
+    list.sort();
+    return node.tagName + "|" + list.join(".");
+  }
   function sameStructureChildren(container) {
     const groups = /* @__PURE__ */ new Map();
     const kids = container.children || [];
@@ -1744,7 +1755,7 @@
       if (!visible(child)) continue;
       const text = norm(child.textContent);
       if (text.length > 80) continue;
-      const key = child.tagName + "|" + String(child.className || "");
+      const key = classKeyOf(child);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(child);
     }
@@ -1763,7 +1774,7 @@
     for (let i = 0; i < nodes.length; i += 1) {
       const items = sameStructureChildren(nodes[i]);
       const texts = items.map((item) => norm(item.textContent)).filter(Boolean);
-      if (texts.length < MIN_ITEMS) continue;
+      if (!texts.length) continue;
       let total = 0;
       for (let k = 0; k < texts.length; k += 1) total += texts[k].length;
       const score = texts.length * 10 - total / texts.length;
@@ -1931,7 +1942,7 @@
   }
 
   // src/core/cascade.js
-  var MAX_LEVELS = 3;
+  var MAX_LEVELS = 4;
   function isCascadeKey(key) {
     return !!ADDRESS_KEYS[key];
   }
@@ -1965,18 +1976,29 @@
     }
     return sectionContainer(el2);
   }
-  function cascadePositionOf(el2) {
-    const scope = cascadeScope(el2);
-    if (!scope) return 0;
-    const list = selectableControls(scope).filter((node) => node.tagName === el2.tagName);
-    const idx = list.indexOf(el2);
-    return idx < 0 ? 0 : idx;
+  function controlUnits(scope) {
+    const controls = selectableControls(scope);
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < controls.length; i += 1) {
+      const node = controls[i];
+      let box = node;
+      while (box.parentElement && box.parentElement !== scope) box = box.parentElement;
+      if (box.parentElement !== scope) continue;
+      if (seen.has(box)) continue;
+      seen.add(box);
+      const inside = controls.filter((n) => n === box || box.contains(n));
+      const pick = inside.find((n) => n.tagName === "SELECT") || inside[0];
+      out.push({ box, node: pick });
+    }
+    return out;
   }
   function detectCascade(el2, classify) {
     if (!el2 || el2.tagName !== "SELECT" && el2.tagName !== "INPUT") return null;
     const scope = cascadeScope(el2);
     if (!scope) return null;
-    const list = selectableControls(scope).map((node) => ({ node, key: classify(node) }));
+    const units = controlUnits(scope);
+    const list = units.map((u) => ({ node: u.node, key: classify(u.node) }));
     const idx = list.findIndex((item) => item.node === el2);
     if (idx < 0) return null;
     const tag = el2.tagName;
@@ -2343,6 +2365,24 @@
     }
     return out;
   }
+  function repeatedBySequence(blocks, sigs) {
+    const flat = sigs.map((s) => s[0]);
+    const half = Math.floor(flat.length / 2);
+    for (let len = 1; len <= half; len += 1) {
+      let same = true;
+      for (let i = 0; i < len; i += 1) {
+        if (flat[i] !== flat[i + len]) {
+          same = false;
+          break;
+        }
+      }
+      if (!same) continue;
+      const out = [];
+      for (let i = 0; i < flat.length; i += len) out.push(blocks[i]);
+      return out;
+    }
+    return null;
+  }
   function repeatedLevel(el2, type) {
     let node = el2;
     for (let depth = 0; depth < 8 && node && node.parentElement; depth += 1) {
@@ -2357,6 +2397,10 @@
       }
       if (blocks.length > 1) {
         const sigs = blocks.map((b) => fieldsOf(b, type).map((n) => fieldKeyOf(n, type)));
+        if (sigs.every((s) => s.length === 1)) {
+          const bySeq = repeatedBySequence(blocks, sigs);
+          if (bySeq) return { node, blocks: bySeq };
+        }
         for (let i = 0; i < sigs.length; i += 1) {
           if (sigs[i].length < 2) continue;
           const distinct = {};
@@ -2635,6 +2679,25 @@
       if (!indexCache.has(el2)) indexCache.set(el2, blockIndexOf(el2, group));
       return indexCache.get(el2);
     };
+    const scopeIds = /* @__PURE__ */ new WeakMap();
+    let scopeSeq = 0;
+    const scopeIdOf = (node) => {
+      if (!scopeIds.has(node)) {
+        scopeSeq += 1;
+        scopeIds.set(node, scopeSeq);
+      }
+      return scopeIds.get(node);
+    };
+    const claimed = /* @__PURE__ */ new Set();
+    const isRepeatInSection = (el2, key) => {
+      if (!groupOf(key)) return false;
+      const scope = sectionContainer(el2) || rowContainer(el2);
+      if (!scope) return false;
+      const stamp = scopeIdOf(scope) + "|" + key + "|" + rowIndexOf(el2, key);
+      if (claimed.has(stamp)) return true;
+      claimed.add(stamp);
+      return false;
+    };
     const segmentOf = (el2) => {
       const row = rowContainer(el2);
       if (!row) return null;
@@ -2794,10 +2857,6 @@
       if (cascade && (cascade.nodes.length > 1 || !key)) {
         if (await runCascade(cascade)) continue;
       }
-      if (key && ADDRESS_KEYS[key] && cascadePositionOf(el2) > 0) {
-        st.manual.push((FIELD_NAMES[key] || key) + "：这一级要等上一级选完，请手动选");
-        continue;
-      }
       let direct = false;
       if (!key) {
         const ex = matchExtra(profile, label, attr, rowText);
@@ -2815,6 +2874,7 @@
       }
       const value = direct ? key.slice(6) : valueForField(key, profile, rowIndexOf(el2, key));
       if (!value) continue;
+      if (isRepeatInSection(el2, key)) continue;
       const pair = pairedStart(el2, key);
       if (pair && !alreadyFilled(pair.node)) {
         const pairValue = valueForField(pair.key, profile, rowIndexOf(pair.node, pair.key));

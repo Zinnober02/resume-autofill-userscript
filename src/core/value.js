@@ -176,6 +176,8 @@ export const FIELD_NAMES = {
   website: '个人网站', github: 'GitHub', referralCode: '内推码', adjust: '是否服从调剂',
   englishLevel: '英语水平', otherLanguages: '其他外语水平', itSkills: 'IT 技能掌握程度', hobbies: '个人爱好',
   school: '学校', college: '学院', major: '专业', degree: '学历', degreeLevel: '学位',
+  researchArea: '研究方向', majorCourses: '主修课程', majorDesc: '专业描述',
+  schooling: '学制', educationType: '培养方式',
   eduStart: '入学时间', eduEnd: '毕业时间', gpa: 'GPA', rank: '排名',
   company: '公司', department: '部门', title: '职位', workStart: '开始时间', workEnd: '结束时间',
   workCity: '工作城市', workDesc: '工作描述',

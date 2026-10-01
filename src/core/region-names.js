@@ -42,18 +42,6 @@ function addAlias(map, full) {
   if (short && !map.has(short)) map.set(short, full);
 }
 
-// 从字符串开头取最长的一段，能对上这一级的名字就返回
-export function matchRegionPrefix(text, aliases) {
-  const source = String(text == null ? '' : text);
-  const limit = Math.min(source.length, 12);
-  for (let len = limit; len >= 2; len -= 1) {
-    const piece = source.slice(0, len);
-    const full = aliases.get(piece);
-    if (full) return { full, length: len };
-  }
-  return null;
-}
-
 export function provinceAliases() { return PROVINCE_ALIASES; }
 export function cityAliases() { return CITY_ALIASES; }
 export function districtAliases() { return DISTRICT_ALIASES; }
@@ -103,7 +91,4 @@ export function regionLevelOf(node) {
   return 'district';
 }
 
-export function isKnownRegion(name) {
-  const t = normalizeRegion(name);
-  return !!(t && (PROVINCE_NAMES.has(t) || CITY_NAMES.has(t) || DISTRICT_NAMES.has(t)));
-}
+

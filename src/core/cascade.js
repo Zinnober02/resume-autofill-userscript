@@ -12,7 +12,7 @@ import { waitFor } from './wait.js';
 import { ADDRESS_KEYS } from './value.js';
 import { assignRoles, valueForRole, ADDRESS_ROLES } from './address.js';
 
-const MAX_LEVELS = 3;
+const MAX_LEVELS = 4;
 
 // 目前只有地址类是分级字段；以后有别的分级字段，在这里登记即可
 function isCascadeKey(key) {
@@ -63,12 +63,33 @@ export function cascadePositionOf(el) {
   return idx < 0 ? 0 : idx;
 }
 
+// 控件常常被组件包一层，盒子里还塞着自己的搜索框（bootstrap-select 就是这样）。
+// 划段按包装盒来，一个盒子最多算一个控件，搜索框才不会把一组下拉切断
+function controlUnits(scope) {
+  const controls = selectableControls(scope);
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < controls.length; i += 1) {
+    const node = controls[i];
+    let box = node;
+    while (box.parentElement && box.parentElement !== scope) box = box.parentElement;
+    if (box.parentElement !== scope) continue;
+    if (seen.has(box)) continue;
+    seen.add(box);
+    const inside = controls.filter((n) => n === box || box.contains(n));
+    const pick = inside.find((n) => n.tagName === 'SELECT') || inside[0];
+    out.push({ box, node: pick });
+  }
+  return out;
+}
+
 // 认组：一栏里连续的同类控件，其中至少一个能认出是分级字段
 export function detectCascade(el, classify) {
   if (!el || (el.tagName !== 'SELECT' && el.tagName !== 'INPUT')) return null;
   const scope = cascadeScope(el);
   if (!scope) return null;
-  const list = selectableControls(scope).map((node) => ({ node, key: classify(node) }));
+  const units = controlUnits(scope);
+  const list = units.map((u) => ({ node: u.node, key: classify(u.node) }));
   const idx = list.findIndex((item) => item.node === el);
   if (idx < 0) return null;
   const tag = el.tagName;

@@ -1,9 +1,7 @@
 // 地址值：整串与省 / 市 / 区县之间的换算，以及每个控件该拿哪一段
 import { norm } from './rules.js';
 import { labelText, attrText } from './dom.js';
-import {
-  regionLevelOf, matchRegionPrefix, provinceAliases, cityAliases, districtAliases,
-} from './region-names.js';
+import { regionLevelOf, provinceAliases, cityAliases, districtAliases } from './region-names.js';
 
 const PROVINCE_RE = /^(北京市|上海市|天津市|重庆市|.{2,10}?(?:省|自治区|特别行政区))/;
 const CITY_RE = /^(.{2,10}?(?:市|自治州|地区|盟))/;

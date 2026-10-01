@@ -75,7 +75,7 @@ function schoolPage() {
   ].join('');
 }
 
-function installSchoolPicker(window) {
+function installSchoolPicker(window, names, activeName) {
   const root = window.document.querySelector('.field');
   const shown = root.querySelector('input[readonly]');
   const helper = root.querySelector('input[type="hidden"]');
@@ -87,10 +87,11 @@ function installSchoolPicker(window) {
   shown.addEventListener('click', () => { panel.style.display = 'block'; });
   box.addEventListener('input', () => {
     list.innerHTML = '';
-    ['南京大学金陵学院', '南京大学', '南京大学附属中学'].forEach((name) => {
+    (names || ['南京大学金陵学院', '南京大学', '南京大学附属中学']).forEach((name) => {
       const li = window.document.createElement('li');
       const a = window.document.createElement('a');
       a.textContent = name;
+      if (activeName && name === activeName) a.className = 'item active';
       li.appendChild(a);
       list.appendChild(li);
       a.addEventListener('click', () => {
@@ -119,4 +120,19 @@ test('弹层里没有匹配项时记进需要手动处理', async () => {
   const report = await runFill(window, { educations: [{ school: '某某大学' }], extra: [] }, OPTIONS);
   assert.equal(field(dom, 'input[readonly]').value, '');
   assert.ok(Array.from(report.manual).some((m) => m.indexOf('弹出层') >= 0));
+});
+test('候选只有两条时也能选中', async () => {
+  const { dom, window } = await createPage(schoolPage());
+  installSchoolPicker(window, ['南京大学金陵学院', '南京大学']);
+  const report = await runFill(window, { educations: [{ school: '南京大学' }], extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'input[readonly]').value, '南京大学');
+  assert.deepEqual(Array.from(report.manual), []);
+});
+
+test('候选中有一条带 active 状态类时也能选中', async () => {
+  const { dom, window } = await createPage(schoolPage());
+  installSchoolPicker(window, ['南京大学金陵学院', '南京大学', '南京大学附属中学'], '南京大学');
+  const report = await runFill(window, { educations: [{ school: '南京大学' }], extra: [] }, OPTIONS);
+  assert.equal(field(dom, 'input[readonly]').value, '南京大学');
+  assert.deepEqual(Array.from(report.manual), []);
 });
